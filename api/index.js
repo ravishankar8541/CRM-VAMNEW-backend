@@ -18,10 +18,10 @@ const PORT = process.env.PORT || 5000;
 dbConnection();
 
 app.use(cors({
-  origin: ['https://www.viralcrm.in', 'http://www.viralcrm.in', 'https://viralcrm.in', 'http://viralcrm.in'],
+  origin: ['http://localhost:5175', 'https://www.viralcrm.in', 'http://www.viralcrm.in', 'https://viralcrm.in', 'http://viralcrm.in'],
   credentials: true,               
 }));
-app.options('*', cors());
+
 app.use(express.json());
 
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
