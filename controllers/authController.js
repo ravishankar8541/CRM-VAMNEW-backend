@@ -75,7 +75,7 @@ exports.login = async (req, res) => {
     const token = jwt.sign(
       { id: user._id, username: user.username, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: '30m' }
+      { expiresIn: '1d' }
     );
 
     user.lastLogin = new Date();
@@ -113,7 +113,7 @@ exports.getAllUsers = async (req, res) => {
     }
 
     const users = await User.find({}, '-password');
-    
+
     return res.status(200).json({
       success: true,
       data: users,
@@ -156,7 +156,7 @@ exports.adminResetPassword = async (req, res) => {
     }
 
     const user = await User.findById(userId);
-    
+
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -204,7 +204,7 @@ exports.changeOwnPassword = async (req, res) => {
     }
 
     const user = await User.findById(userId).select('+password');
-    
+
     if (!user) {
       return res.status(404).json({
         success: false,

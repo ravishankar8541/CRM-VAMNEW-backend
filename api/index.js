@@ -11,7 +11,7 @@ const serviceBillRoutes = require('../routes/serviceBillRoutes');
 const emailRoutes = require('../routes/emailRoutes');
 const pdfRoutes = require('../routes/pdfRoutes');
 
-
+const proformaRoutes = require('../routes/proformaRoutes');
 
 const PORT = process.env.PORT || 5000;
 
@@ -33,7 +33,7 @@ app.use('/api/service-bills', serviceBillRoutes);
 app.use('/api/email', emailRoutes);
 app.use('/api/pdf', pdfRoutes);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-
+app.use('/api/proforma', proformaRoutes);
 
 
 app.get('/', (req, res) => {
