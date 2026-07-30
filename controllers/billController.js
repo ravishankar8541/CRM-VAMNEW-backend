@@ -1,9 +1,6 @@
 const Bill = require('../models/Bill');
 const Client = require('../models/Client');
 const ServiceBill = require('../models/ServiceBill');
-const PDFDocument = require('pdfkit');
-const fs = require('fs');
-const path = require('path');
 
 const generateBillNumber = async (retryCount = 0) => {
     const year = new Date().getFullYear();
@@ -70,7 +67,7 @@ exports.createBill = async (req, res) => {
             paymentRemarks,
             services,
             isMultiServiceInstallment,
-            targetServiceBillId  // ✅ Added but not used yet
+            targetServiceBillId
         } = req.body;
 
         if (!clientId) {
@@ -125,7 +122,6 @@ exports.createBill = async (req, res) => {
 
         const parsedInitialPayment = Math.round(parseFloat(initialPayment)) || 0;
 
-        // Round to handle floating point issues
         const roundedTotal = Math.round(parsedTotalAmount);
         const roundedInitial = Math.round(parsedInitialPayment);
 
@@ -164,6 +160,7 @@ exports.createBill = async (req, res) => {
             sgstAmount = calculatedGstAmount / 2;
         }
 
+        // ✅ NEW: createdBy fields - IMPORTANT
         const newBill = new Bill({
             billNumber,
             clientId,
@@ -182,6 +179,8 @@ exports.createBill = async (req, res) => {
             taxType: currentTaxType,
             notes: notes || '',
             createdBy: req.user?.username || 'System',
+            createdById: req.user?.id || null,
+            createdByUsername: req.user?.username || 'System',
             paidAmount: parsedInitialPayment,
             subtotal: parsedSubtotal,
             totalGstAmount: roundedGstAmount,
@@ -191,7 +190,7 @@ exports.createBill = async (req, res) => {
 
         if (services && Array.isArray(services) && services.length > 0 && services[0].duration) {
             newBill.duration = services[0].duration;
-            
+
         }
 
         let due = parsedTotalAmount - parsedInitialPayment;
@@ -236,30 +235,21 @@ exports.createBill = async (req, res) => {
         }
 
         await newBill.save();
-        
+
         await newBill.populate('clientId', 'name companyName email phone address gstNumber');
 
-        // ========== ✅ SERVICE BILL CREATION - FIXED WITH targetServiceBillId ==========
+        // ========== SERVICE BILL CREATION ==========
         try {
-          
-
             let isInstallmentForExistingMultiService = false;
             let existingMultiServiceBill = null;
 
-            // ✅ METHOD 1: DIRECTLY USE targetServiceBillId (MOST ACCURATE)
             if (targetServiceBillId) {
                 existingMultiServiceBill = await ServiceBill.findById(targetServiceBillId);
                 if (existingMultiServiceBill && existingMultiServiceBill.isMultiService === true) {
                     isInstallmentForExistingMultiService = true;
-                    console.log(`✅ Using targetServiceBillId: ${targetServiceBillId} - ${existingMultiServiceBill.serviceName}`);
-                } else if (existingMultiServiceBill) {
-                    console.log(`⚠️ Found service bill but it's not multi-service (isMultiService: ${existingMultiServiceBill.isMultiService})`);
-                } else {
-                    console.log(`⚠️ No service bill found with ID: ${targetServiceBillId}`);
                 }
             }
 
-            // ✅ METHOD 2: If no target ID but flag is true, try to find by service name
             if (!isInstallmentForExistingMultiService && isMultiServiceInstallment === true && serviceName) {
                 existingMultiServiceBill = await ServiceBill.findOne({
                     clientId: clientId,
@@ -270,47 +260,11 @@ exports.createBill = async (req, res) => {
 
                 if (existingMultiServiceBill) {
                     isInstallmentForExistingMultiService = true;
-                    console.log(`✅ Found multi-service bill by service name match: ${existingMultiServiceBill.serviceName}`);
-                } else {
-                    // Try without status filter
-                    existingMultiServiceBill = await ServiceBill.findOne({
-                        clientId: clientId,
-                        isMultiService: true,
-                        'services.serviceName': serviceName
-                    });
-                    if (existingMultiServiceBill) {
-                        isInstallmentForExistingMultiService = true;
-                        console.log(`✅ Found multi-service bill (including paid): ${existingMultiServiceBill.serviceName}`);
-                    }
-                }
-            }
-
-            // ✅ METHOD 3: Auto-detect from description (fallback)
-            if (!isInstallmentForExistingMultiService && serviceName && (!services || services.length === 0)) {
-                const isInstallmentDesc = description && (
-                    description.toLowerCase().includes('installment') ||
-                    (paymentRemarks && paymentRemarks.toLowerCase().includes('installment'))
-                );
-
-                if (isInstallmentDesc) {
-                    existingMultiServiceBill = await ServiceBill.findOne({
-                        clientId: clientId,
-                        isMultiService: true,
-                        'services.serviceName': serviceName,
-                        status: { $ne: 'Paid' }
-                    });
-
-                    if (existingMultiServiceBill) {
-                        isInstallmentForExistingMultiService = true;
-                        console.log(`✅ Auto-detected installment for: ${existingMultiServiceBill.serviceName}`);
-                    }
                 }
             }
 
             // ✅ CASE 1: MULTIPLE SERVICES (New multi-service contract)
             if (services && Array.isArray(services) && services.length > 0) {
-                console.log("📌 Creating NEW multi-service contract");
-
                 let totalContractValue = 0;
                 const serviceDetails = [];
                 let contractDuration = '';
@@ -349,10 +303,6 @@ exports.createBill = async (req, res) => {
 
                 const contractName = serviceDetails.map(s => s.serviceName).join(' + ');
 
-                console.log(`   Contract: ${contractName}`);
-                console.log(`   Total Value: ₹${totalContractValue}`);
-                console.log(`   Payment: ₹${proportionalPayment}`);
-
                 const serviceBill = new ServiceBill({
                     clientId: clientId,
                     isMultiService: true,
@@ -370,9 +320,13 @@ exports.createBill = async (req, res) => {
                         amount: totalContractValue,
                         paymentReceived: proportionalPayment,
                         date: new Date()
-                    }],  taxType: currentTaxType,
-    gstPercentage: parseFloat(gstPercentage) || 18,
-    gstAmount: roundedGstAmount || 0
+                    }],
+                    taxType: currentTaxType,
+                    gstPercentage: parseFloat(gstPercentage) || 18,
+                    gstAmount: roundedGstAmount || 0,
+                    // ✅ IMPORTANT: Save who created this
+                    createdBy: req.user?.id || null,
+                    createdByUsername: req.user?.username || 'System'
                 });
 
                 if (proportionalPayment > 0) {
@@ -388,20 +342,12 @@ exports.createBill = async (req, res) => {
                 }
 
                 await serviceBill.save();
-                console.log(`✅ NEW multi-service contract created: ${contractName}`);
             }
 
-            // ✅ CASE 2: SINGLE SERVICE - Installment for existing multi-service
+            // ✅ CASE 2: SINGLE SERVICE
             else if (serviceName && (!services || services.length === 0)) {
-                console.log("📌 Processing SINGLE service:", serviceName);
-                console.log("   isInstallmentForExistingMultiService:", isInstallmentForExistingMultiService);
-
-                // ✅ FIRST: Check if this is an installment for an existing multi-service contract
                 if (isInstallmentForExistingMultiService && existingMultiServiceBill) {
-                    console.log(`✅ THIS IS AN INSTALLMENT FOR EXISTING MULTI-SERVICE: ${existingMultiServiceBill.serviceName}`);
-                    console.log(`   Current paid: ${existingMultiServiceBill.paidAmount}, New payment: ${parsedInitialPayment}`);
-
-                    // ✅ CRITICAL: Check if this bill already exists
+                    // Installment for existing multi-service
                     const billAlreadyExists = existingMultiServiceBill.bills.some(b => b.billNumber === billNumber);
 
                     if (!billAlreadyExists) {
@@ -409,9 +355,7 @@ exports.createBill = async (req, res) => {
                         existingMultiServiceBill.paidAmount = newPaidAmount;
                         existingMultiServiceBill.dueAmount = existingMultiServiceBill.totalAmount - newPaidAmount;
 
-                        // ✅ Prevent negative due amount
                         if (existingMultiServiceBill.dueAmount < 0) {
-                            console.warn(`⚠️ Warning: Due amount went negative! Setting to 0`);
                             existingMultiServiceBill.dueAmount = 0;
                         }
 
@@ -442,13 +386,9 @@ exports.createBill = async (req, res) => {
                         }
 
                         await existingMultiServiceBill.save();
-                        console.log(`✅ Payment added! New paid: ${existingMultiServiceBill.paidAmount}, Due: ${existingMultiServiceBill.dueAmount}`);
-                    } else {
-                        console.log(`   Bill already exists, skipping duplicate`);
                     }
-                }
-                // ✅ Regular single service (not related to any multi-service)
-                else {
+                } else {
+                    // Regular single service
                     let serviceBill = await ServiceBill.findOne({
                         clientId: clientId,
                         serviceName: serviceName,
@@ -474,7 +414,10 @@ exports.createBill = async (req, res) => {
                                 amount: serviceTotal,
                                 paymentReceived: parsedInitialPayment,
                                 date: new Date()
-                            }]
+                            }],
+                            // ✅ IMPORTANT: Save who created this
+                            createdBy: req.user?.id || null,
+                            createdByUsername: req.user?.username || 'System'
                         });
                     } else {
                         const billAlreadyExists = serviceBill.bills.some(b => b.billNumber === billNumber);
@@ -484,10 +427,8 @@ exports.createBill = async (req, res) => {
                                 parsedTotalAmount <= serviceBill.dueAmount;
 
                             if (isInstallmentBill) {
-                                console.log(`📌 INSTALLMENT payment for single service: +₹${parsedInitialPayment}`);
                                 serviceBill.paidAmount += parsedInitialPayment;
                             } else {
-                                console.log(`📌 REGULAR bill for single service: +₹${parsedTotalAmount} total, +₹${parsedInitialPayment} paid`);
                                 serviceBill.paidAmount += parsedInitialPayment;
                             }
 
@@ -525,7 +466,6 @@ exports.createBill = async (req, res) => {
                     }
 
                     await serviceBill.save();
-                    console.log(`✅ ServiceBill saved for: ${serviceName}`);
                 }
             }
 
@@ -533,13 +473,12 @@ exports.createBill = async (req, res) => {
             console.error('❌ Error creating service bill:', serviceBillError);
         }
 
-        // ✅ YAHAN SIRF YEH RETURN STATEMENT CHANGE KIYA HAI
         return res.status(201).json({
             success: true,
             message: parsedInitialPayment > 0 ? 'Bill created with initial payment' : 'Bill created successfully',
             data: {
                 ...newBill.toObject(),
-                taxType: newBill.taxType,  
+                taxType: newBill.taxType,
                 cgst: newBill.cgst,
                 sgst: newBill.sgst,
                 igst: newBill.igst
@@ -556,6 +495,7 @@ exports.createBill = async (req, res) => {
     }
 };
 
+// ✅ UPDATED: Employee ko sirf apne bills dikhao
 exports.getBills = async (req, res) => {
     try {
         const {
@@ -568,6 +508,11 @@ exports.getBills = async (req, res) => {
         } = req.query;
 
         let query = {};
+
+        // ✅ Agar employee hai toh sirf apne bills dikhao
+        if (req.user && req.user.role === 'employee') {
+            query.createdById = req.user.id;
+        }
 
         if (status && status !== 'All') query.status = status;
         if (clientId) query.clientId = clientId;
@@ -607,6 +552,7 @@ exports.getBills = async (req, res) => {
     }
 };
 
+// ✅ UPDATED: Permission check for bill by ID
 exports.getBillById = async (req, res) => {
     try {
         const bill = await Bill.findById(req.params.id)
@@ -619,7 +565,14 @@ exports.getBillById = async (req, res) => {
             });
         }
 
-        // ✅ FIX: Convert to object first
+        // ✅ Employee check: Agar employee hai aur bill usne nahi banaya toh deny
+        if (req.user && req.user.role === 'employee' && bill.createdById?.toString() !== req.user.id) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. You can only view your own bills.'
+            });
+        }
+
         const billData = bill.toObject();
 
         return res.status(200).json({
@@ -640,6 +593,7 @@ exports.getBillById = async (req, res) => {
     }
 };
 
+// ✅ UPDATED: Permission check for add payment
 exports.addPayment = async (req, res) => {
     try {
         const { id } = req.params;
@@ -658,6 +612,14 @@ exports.addPayment = async (req, res) => {
             return res.status(404).json({
                 success: false,
                 message: 'Bill not found'
+            });
+        }
+
+        // ✅ Employee check
+        if (req.user && req.user.role === 'employee' && bill.createdById?.toString() !== req.user.id) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. You can only add payments to your own bills.'
             });
         }
 
@@ -715,6 +677,7 @@ exports.addPayment = async (req, res) => {
     }
 };
 
+// ✅ UPDATED: Permission check for update bill
 exports.updateBill = async (req, res) => {
     try {
         const { id } = req.params;
@@ -726,6 +689,14 @@ exports.updateBill = async (req, res) => {
             return res.status(404).json({
                 success: false,
                 message: 'Bill not found'
+            });
+        }
+
+        // ✅ Employee check
+        if (req.user && req.user.role === 'employee' && bill.createdById?.toString() !== req.user.id) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. You can only edit your own bills.'
             });
         }
 
@@ -775,6 +746,7 @@ exports.updateBill = async (req, res) => {
     }
 };
 
+// ✅ UPDATED: Permission check for delete bill
 exports.deleteBill = async (req, res) => {
     try {
         const { id } = req.params;
@@ -785,6 +757,14 @@ exports.deleteBill = async (req, res) => {
             return res.status(404).json({
                 success: false,
                 message: 'Bill not found'
+            });
+        }
+
+        // ✅ Employee check
+        if (req.user && req.user.role === 'employee' && bill.createdById?.toString() !== req.user.id) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. You can only delete your own bills.'
             });
         }
 
@@ -819,6 +799,7 @@ exports.deleteBill = async (req, res) => {
     }
 };
 
+// ✅ UPDATED: Permission check for client billing summary
 exports.getClientBillingSummary = async (req, res) => {
     try {
         const { clientId } = req.params;
@@ -830,7 +811,14 @@ exports.getClientBillingSummary = async (req, res) => {
             });
         }
 
-        const bills = await Bill.find({ clientId: clientId }).sort({ billDate: -1 });
+        let query = { clientId: clientId };
+
+        // ✅ Agar employee hai toh sirf apne bills dikhao
+        if (req.user && req.user.role === 'employee') {
+            query.createdById = req.user.id;
+        }
+
+        const bills = await Bill.find(query).sort({ billDate: -1 });
 
         const summary = {
             totalBilled: 0,
@@ -855,7 +843,7 @@ exports.getClientBillingSummary = async (req, res) => {
                 cgst: bill.cgst || 0,
                 sgst: bill.sgst || 0,
                 igst: bill.igst || 0,
-                 taxType: bill.taxType || 'CGST+SGST',
+                taxType: bill.taxType || 'CGST+SGST',
                 serviceName: bill.serviceName || (bill.services && bill.services[0]?.serviceName) || 'Installment Bill'
             }))
         };
@@ -914,21 +902,28 @@ exports.editBill = async (req, res) => {
     return exports.updateBill(req, res);
 };
 
+// ✅ UPDATED: Permission check for force delete
 exports.forceDeleteBill = async (req, res) => {
     try {
         const { id } = req.params;
 
-
-        const deletedBill = await Bill.findByIdAndDelete(id);
-
-        if (!deletedBill) {
+        const bill = await Bill.findById(id);
+        if (!bill) {
             return res.status(404).json({
                 success: false,
                 message: 'Bill not found'
             });
         }
 
-        
+        // ✅ Employee check
+        if (req.user && req.user.role === 'employee' && bill.createdById?.toString() !== req.user.id) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. You can only delete your own bills.'
+            });
+        }
+
+        const deletedBill = await Bill.findByIdAndDelete(id);
 
         return res.status(200).json({
             success: true,

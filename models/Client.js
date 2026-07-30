@@ -34,13 +34,15 @@ const clientSchema = new mongoose.Schema({
         type: String,
         required: false
     },
-     leadOwner: { type: String, default: '' },
+    leadOwner: { 
+        type: String, 
+        default: '' 
+    },
     clientStatus: {
         type: String,
         required: true,
         default: "New Client"
     },
-
     status: {
         type: String,
         required: true,
@@ -56,13 +58,11 @@ const clientSchema = new mongoose.Schema({
         comment: String,
         updatedAt: { type: Date, default: Date.now }
     }],
-
     prospectHistory: [{
         prospectDate: Date,
         comment: String,
         updatedAt: { type: Date, default: Date.now }
     }],
-
     convertedHistory: [{
         service: String,
         convertedDealAmout: String,
@@ -80,10 +80,19 @@ const clientSchema = new mongoose.Schema({
     convertedRemarks: String,
     latestFollowUpDate: { type: Date },
     latestProspectDate: { type: Date },
-
     addedDate: {
         type: Date,
         default: Date.now
+    },
+    // ✅ Employee data tracking - IMPORTANT
+    createdBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null
+    },
+    createdByUsername: {
+        type: String,
+        default: ''
     }
 }, { timestamps: true });
 

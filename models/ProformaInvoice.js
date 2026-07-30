@@ -1,4 +1,3 @@
-// models/ProformaInvoice.js
 const mongoose = require('mongoose');
 
 const proformaServiceItemSchema = new mongoose.Schema({
@@ -163,9 +162,15 @@ const proformaInvoiceSchema = new mongoose.Schema({
         enum: ['Draft', 'Sent', 'Viewed', 'Accepted', 'Rejected', 'Expired', 'Converted'],
         default: 'Draft'
     },
+    // ✅ FIXED: createdBy should be ObjectId, not String
     createdBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null
+    },
+    createdByUsername: {
         type: String,
-        required: true
+        default: ''
     },
     convertedToBillId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -245,7 +250,7 @@ proformaInvoiceSchema.pre('save', async function () {
         
     } catch (error) {
         console.error('❌ Error in pre-save middleware:', error);
-        throw error;   // important: throw instead of next(error)
+        throw error;
     }
 });
 

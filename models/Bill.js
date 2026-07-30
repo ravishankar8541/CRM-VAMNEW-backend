@@ -39,7 +39,7 @@ const serviceItemSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
-     duration: {                    
+    duration: {                    
         type: String,
         default: ''
     },
@@ -94,8 +94,14 @@ const billSchema = new mongoose.Schema({
         ref: 'Client',
         required: true
     },
-     clientName: { type: String, default: '' },
-    leadOwner: { type: String, default: '' },
+    clientName: { 
+        type: String, 
+        default: '' 
+    },
+    leadOwner: { 
+        type: String, 
+        default: '' 
+    },
     serviceName: {
         type: String,
         default: ''
@@ -136,7 +142,7 @@ const billSchema = new mongoose.Schema({
         default: 0,
         min: 0
     },
-      gstPercentage: {        
+    gstPercentage: {        
         type: Number,
         default: 0,
         min: 0,
@@ -189,7 +195,7 @@ const billSchema = new mongoose.Schema({
     },
     createdBy: {
         type: String,
-        required: true
+        default: ''
     },
     isRecurring: {
         type: Boolean,
@@ -199,6 +205,16 @@ const billSchema = new mongoose.Schema({
         type: String,
         enum: ['Monthly', 'Quarterly', 'Half-Yearly', 'Yearly'],
         default: null
+    },
+    // ✅ Employee data tracking - IMPORTANT
+    createdById: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null
+    },
+    createdByUsername: {
+        type: String,
+        default: ''
     }
 }, { timestamps: true });
 
@@ -272,7 +288,5 @@ billSchema.methods.addPayment = async function(paymentData) {
     await this.save();
     return this;
 };
-
-// NO pre-save middleware - We'll call calculate manually in controller
 
 module.exports = mongoose.model("Bill", billSchema);

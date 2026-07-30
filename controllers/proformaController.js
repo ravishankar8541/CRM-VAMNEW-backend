@@ -1,4 +1,3 @@
-// controllers/proformaController.js
 const ProformaInvoice = require('../models/ProformaInvoice');
 const Client = require('../models/Client');
 const QRCode = require('qrcode');
@@ -44,7 +43,6 @@ const generatePDFHTML = async (proforma) => {
     gstNumber: proforma.clientGst || ''
   };
 
-  // Generate UPI QR Code
   let qrCodeDataURL = null;
   try {
     const upiString = `upi://pay?pa=viraladsmedia@aubank&pn=${encodeURIComponent('VIRAL ADS MEDIA')}&am=${proforma.totalAmount || 0}&cu=INR&tn=${encodeURIComponent(`Proforma ${proforma.proformaNumber}`)}`;
@@ -299,8 +297,6 @@ const generatePDFHTML = async (proforma) => {
 
 // ==================== CREATE PROFORMA ====================
 exports.createProforma = async (req, res) => {
-  
-
   try {
     const {
       clientId,
@@ -342,6 +338,14 @@ exports.createProforma = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Client not found'
+      });
+    }
+
+    // ✅ Employee check: Agar employee hai aur client usne nahi banaya toh deny
+    if (req.user && req.user.role === 'employee' && client.createdBy?.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only create proforma for your own clients.'
       });
     }
 
@@ -415,7 +419,9 @@ exports.createProforma = async (req, res) => {
           discount: disc,
           discountType: discountType || 'percentage',
           validUntil: validUntil ? new Date(validUntil) : new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
-          createdBy: req.user?.username || 'System',
+          // ✅ FIXED: createdBy as ObjectId
+          createdBy: req.user?.id || null,
+          createdByUsername: req.user?.username || 'System',
           pdfUrl: pdfUrl || '',
           status: 'Draft',
           subtotal: Math.round(subtotal),
@@ -470,6 +476,7 @@ exports.createProforma = async (req, res) => {
 };
 
 // ==================== GET ALL PROFORMAS ====================
+// ✅ Employee ko sirf apne proformas dikhao
 exports.getProformas = async (req, res) => {
   try {
     const {
@@ -482,6 +489,11 @@ exports.getProformas = async (req, res) => {
     } = req.query;
 
     let query = {};
+
+    // ✅ Agar employee hai toh sirf apne proformas dikhao
+    if (req.user && req.user.role === 'employee') {
+      query.createdBy = req.user.id;
+    }
 
     if (status && status !== 'All') query.status = status;
     if (clientId) query.clientId = clientId;
@@ -522,6 +534,7 @@ exports.getProformas = async (req, res) => {
 };
 
 // ==================== GET SINGLE PROFORMA ====================
+// ✅ Employee ko sirf apne proformas dikhao
 exports.getProformaById = async (req, res) => {
   try {
     const proforma = await ProformaInvoice.findById(req.params.id)
@@ -531,6 +544,14 @@ exports.getProformaById = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Proforma invoice not found'
+      });
+    }
+
+    // ✅ Employee check: Agar employee hai aur proforma usne nahi banaya toh deny
+    if (req.user && req.user.role === 'employee' && proforma.createdBy?.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only view your own proforma invoices.'
       });
     }
 
@@ -550,6 +571,7 @@ exports.getProformaById = async (req, res) => {
 };
 
 // ==================== UPDATE PROFORMA ====================
+// ✅ Employee ko sirf apne proformas edit karne do
 exports.updateProforma = async (req, res) => {
   try {
     const { id } = req.params;
@@ -578,6 +600,14 @@ exports.updateProforma = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Proforma invoice not found'
+      });
+    }
+
+    // ✅ Employee check: Agar employee hai aur proforma usne nahi banaya toh deny
+    if (req.user && req.user.role === 'employee' && proforma.createdBy?.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only edit your own proforma invoices.'
       });
     }
 
@@ -683,6 +713,7 @@ exports.updateProforma = async (req, res) => {
 };
 
 // ==================== UPDATE STATUS ====================
+// ✅ Employee ko sirf apne proformas ka status update karne do
 exports.updateProformaStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -693,6 +724,14 @@ exports.updateProformaStatus = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Proforma invoice not found'
+      });
+    }
+
+    // ✅ Employee check: Agar employee hai aur proforma usne nahi banaya toh deny
+    if (req.user && req.user.role === 'employee' && proforma.createdBy?.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only update status for your own proforma invoices.'
       });
     }
 
@@ -728,6 +767,7 @@ exports.updateProformaStatus = async (req, res) => {
 };
 
 // ==================== DELETE PROFORMA ====================
+// ✅ Employee ko sirf apne proformas delete karne do
 exports.deleteProforma = async (req, res) => {
   try {
     const { id } = req.params;
@@ -737,6 +777,14 @@ exports.deleteProforma = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Proforma invoice not found'
+      });
+    }
+
+    // ✅ Employee check: Agar employee hai aur proforma usne nahi banaya toh deny
+    if (req.user && req.user.role === 'employee' && proforma.createdBy?.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only delete your own proforma invoices.'
       });
     }
 
@@ -765,18 +813,27 @@ exports.deleteProforma = async (req, res) => {
 };
 
 // ==================== GET STATS ====================
+// ✅ Employee ko sirf apne proformas ka stats dikhao
 exports.getProformaStats = async (req, res) => {
   try {
-    const total = await ProformaInvoice.countDocuments();
-    const draft = await ProformaInvoice.countDocuments({ status: 'Draft' });
-    const sent = await ProformaInvoice.countDocuments({ status: 'Sent' });
-    const viewed = await ProformaInvoice.countDocuments({ status: 'Viewed' });
-    const accepted = await ProformaInvoice.countDocuments({ status: 'Accepted' });
-    const rejected = await ProformaInvoice.countDocuments({ status: 'Rejected' });
-    const converted = await ProformaInvoice.countDocuments({ status: 'Converted' });
-    const expired = await ProformaInvoice.countDocuments({ status: 'Expired' });
+    let query = {};
+
+    // ✅ Agar employee hai toh sirf apne proformas ka stats dikhao
+    if (req.user && req.user.role === 'employee') {
+      query.createdBy = req.user.id;
+    }
+
+    const total = await ProformaInvoice.countDocuments(query);
+    const draft = await ProformaInvoice.countDocuments({ ...query, status: 'Draft' });
+    const sent = await ProformaInvoice.countDocuments({ ...query, status: 'Sent' });
+    const viewed = await ProformaInvoice.countDocuments({ ...query, status: 'Viewed' });
+    const accepted = await ProformaInvoice.countDocuments({ ...query, status: 'Accepted' });
+    const rejected = await ProformaInvoice.countDocuments({ ...query, status: 'Rejected' });
+    const converted = await ProformaInvoice.countDocuments({ ...query, status: 'Converted' });
+    const expired = await ProformaInvoice.countDocuments({ ...query, status: 'Expired' });
 
     const result = await ProformaInvoice.aggregate([
+      { $match: query },
       { $group: { _id: null, total: { $sum: '$totalAmount' } } }
     ]);
     const totalAmount = result.length > 0 ? result[0].total : 0;
@@ -807,6 +864,7 @@ exports.getProformaStats = async (req, res) => {
 };
 
 // ==================== GENERATE PROFORMA PDF ====================
+// ✅ Employee ko sirf apne proformas ka PDF generate karne do
 exports.generateProformaPDF = async (req, res) => {
   try {
     const { id } = req.params;
@@ -818,6 +876,18 @@ exports.generateProformaPDF = async (req, res) => {
           <body style="font-family: Arial; text-align: center; padding: 50px;">
             <h1>❌ Proforma Invoice Not Found</h1>
             <p>The proforma invoice you are looking for does not exist.</p>
+          </body>
+        </html>
+      `);
+    }
+
+    // ✅ Employee check: Agar employee hai aur proforma usne nahi banaya toh deny
+    if (req.user && req.user.role === 'employee' && proforma.createdBy?.toString() !== req.user.id) {
+      return res.status(403).send(`
+        <html>
+          <body style="font-family: Arial; text-align: center; padding: 50px;">
+            <h1>⛔ Access Denied</h1>
+            <p>You can only view your own proforma invoices.</p>
           </body>
         </html>
       `);

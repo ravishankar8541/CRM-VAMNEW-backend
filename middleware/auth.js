@@ -15,7 +15,7 @@ const authMiddleware = async (req, res, next) => {
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
-    // ✅ CRUCIAL: Check if user still exists in database
+    // ✅ Check if user still exists in database
     const user = await User.findById(decoded.id).select('-password');
     
     if (!user) {
@@ -33,7 +33,7 @@ const authMiddleware = async (req, res, next) => {
       });
     }
 
-    // Attach full user object to request
+    // ✅ Attach full user object to request
     req.user = {
       id: user._id,
       username: user.username,
@@ -42,8 +42,12 @@ const authMiddleware = async (req, res, next) => {
       isActive: user.isActive,
     };
     
+    // ✅ Debug log
+    console.log('✅ Auth Middleware - User attached:', req.user);
+    
     next();
   } catch (error) {
+    console.error('❌ Auth Middleware Error:', error);
     if (error.name === 'JsonWebTokenError') {
       return res.status(401).json({
         success: false,

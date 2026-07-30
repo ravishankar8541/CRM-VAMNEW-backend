@@ -43,7 +43,6 @@ const serviceBillSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
-    // ✅ ADD THESE FIELDS FOR GST
     taxType: {
         type: String,
         enum: ['CGST+SGST', 'IGST'],
@@ -79,7 +78,17 @@ const serviceBillSchema = new mongoose.Schema({
         amount: { type: Number },
         paymentReceived: { type: Number },
         date: { type: Date, default: Date.now }
-    }]
+    }],
+    // ✅ Employee data tracking - IMPORTANT
+    createdBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null
+    },
+    createdByUsername: {
+        type: String,
+        default: ''
+    }
 }, { timestamps: true });
 
 module.exports = mongoose.model('ServiceBill', serviceBillSchema);

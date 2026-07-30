@@ -1,5 +1,6 @@
 const Client = require('../models/Client')
 
+// ==================== ADD CLIENT ====================
 exports.addClient = async (req, res) => {
     try {
         const { 
@@ -10,7 +11,7 @@ exports.addClient = async (req, res) => {
             gstNumber, 
             category, 
             address,
-            leadOwner,      // ✅ ADDED
+            leadOwner,
             clientStatus, 
             remarks
         } = req.body;
@@ -35,7 +36,13 @@ exports.addClient = async (req, res) => {
             });
         }
 
-        // 3. Create New Client object
+        // 3. ✅ Debug: Log user info
+        console.log('🔍 User from token:', req.user);
+        console.log('🔍 User ID:', req.user?.id);
+        console.log('🔍 User Role:', req.user?.role);
+        console.log('🔍 User Username:', req.user?.username);
+
+        // 4. ✅ createdBy save karo - Properly handle req.user
         const newClient = new Client({
             name,
             email: email.toLowerCase(),
@@ -44,15 +51,17 @@ exports.addClient = async (req, res) => {
             gstNumber,
             category,
             address,
-            leadOwner: leadOwner || '',     // ✅ ADDED
+            leadOwner: leadOwner || req.user?.username || 'System',
             clientStatus: clientStatus || "New Client",
-            remarks
+            remarks: remarks || '',
+            createdBy: req.user?.id || null,
+            createdByUsername: req.user?.username || 'System'
         });
 
-        // 4. Save to Database
+        // 5. Save to Database
         await newClient.save();
 
-        // 5. Success Response
+        // 6. Success Response
         return res.status(201).json({
             success: true,
             message: 'Client added successfully',
@@ -69,12 +78,20 @@ exports.addClient = async (req, res) => {
     }
 }
 
+// ==================== GET ALL CLIENTS ====================
+// ✅ Employee ko sirf apne clients dikhao
 exports.clients = async (req, res) => {
     try {
-        // Fetch all clients, sorted by newest first
-        const clients = await Client.find().sort({ createdAt: -1 });
+        let query = {};
+        
+        // ✅ Agar employee hai toh sirf apne clients dikhao
+        if (req.user && req.user.role === 'employee') {
+            query.createdBy = req.user.id;
+        }
+        // ✅ Admin aur HR ko sab dikhega (query empty hai)
+        
+        const clients = await Client.find(query).sort({ createdAt: -1 });
 
-        // Changed status from 400 to 200 (Success)
         return res.status(200).json({
             success: true,
             count: clients.length,
@@ -91,6 +108,7 @@ exports.clients = async (req, res) => {
     }
 }
 
+// ==================== EDIT CLIENT ====================
 exports.editClient = async (req, res) => {
     try {
         const { id } = req.params;
@@ -98,15 +116,48 @@ exports.editClient = async (req, res) => {
 
         const client = await Client.findById(id);
         if (!client) {
-            return res.status(404).json({ success: false, message: 'Client not found' });
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Client not found' 
+            });
         }
 
-        // Update leadOwner if provided
-        if (updateData.leadOwner !== undefined) {
+        // ✅ Get user info for comparison
+        const userId = req.user?.id?.toString();
+        const createdBy = client.createdBy?.toString();
+        const isOwner = createdBy === userId;
+        const isEmployee = req.user && req.user.role === 'employee';
+
+        // ✅ If employee and not owner, restrict to status-only updates
+        if (isEmployee && !isOwner) {
+            // ✅ Allow status updates (Follow-up, Prospect, Converted)
+            const allowedFields = [
+                'status', 'clientStatus', 'remarks',
+                'followUpComment', 'nextFollowUpDate',
+                'prospectComment', 'prospectDate',
+                'convertedService', 'convertedDealAmout', 
+                'convertedStartDate', 'convertedDuration',
+                'convertedLeadOwner', 'convertedRemarks'
+            ];
+            
+            // ✅ Check if employee is trying to update personal info
+            const personalFields = ['name', 'email', 'phone', 'companyName', 'gstNumber', 'category', 'address'];
+            const isUpdatingPersonal = personalFields.some(field => updateData[field] !== undefined);
+            
+            if (isUpdatingPersonal) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Access denied. Employees can only update status and follow-up information.'
+                });
+            }
+        }
+
+        // ✅ Update leadOwner - only if not employee OR employee owns the client
+        if (updateData.leadOwner !== undefined && !isEmployee) {
             client.leadOwner = updateData.leadOwner;
         }
 
-        // Latest fields update
+        // ✅ Update converted fields
         if (updateData.convertedService) client.convertedService = updateData.convertedService;
         if (updateData.convertedDealAmout !== undefined) client.convertedDealAmout = updateData.convertedDealAmout;
         if (updateData.convertedStartDate) client.convertedStartDate = updateData.convertedStartDate;
@@ -114,7 +165,7 @@ exports.editClient = async (req, res) => {
         if (updateData.convertedLeadOwner) client.convertedLeadOwner = updateData.convertedLeadOwner;
         if (updateData.convertedRemarks) client.convertedRemarks = updateData.convertedRemarks;
 
-        // Followup - Multiple allowed
+        // ✅ Followup - Multiple allowed
         if (updateData.status === "Followup" && updateData.nextFollowUpDate) {
             client.followUpHistory.push({
                 nextFollowUpDate: updateData.nextFollowUpDate,
@@ -124,7 +175,7 @@ exports.editClient = async (req, res) => {
             client.latestFollowUpDate = updateData.nextFollowUpDate;
         }
 
-        // Prospect
+        // ✅ Prospect
         if (updateData.status === "Prospect" && updateData.prospectDate) {
             client.prospectHistory.push({
                 prospectDate: updateData.prospectDate,
@@ -134,20 +185,34 @@ exports.editClient = async (req, res) => {
             client.latestProspectDate = updateData.prospectDate;
         }
 
-        // Converted - Multiple allowed
+        // ✅ Converted - Multiple allowed
         if (updateData.status === "Converted") {
             client.convertedHistory.push({
-                service: updateData.convertedService,
-                convertedDealAmout: updateData.convertedDealAmout,
-                startDate: updateData.convertedStartDate,
-                duration: updateData.convertedDuration,
-                leadOwner: updateData.convertedLeadOwner,
-                remarks: updateData.convertedRemarks,
+                service: updateData.convertedService || client.convertedService || 'Converted Client',
+                convertedDealAmout: updateData.convertedDealAmout || client.convertedDealAmout || '0',
+                startDate: updateData.convertedStartDate || client.convertedStartDate || new Date(),
+                duration: updateData.convertedDuration || client.convertedDuration || '',
+                leadOwner: updateData.convertedLeadOwner || client.convertedLeadOwner || '',
+                remarks: updateData.convertedRemarks || client.convertedRemarks || '',
                 convertedAt: new Date()
             });
         }
 
-        Object.assign(client, updateData);
+        // ✅ Update personal fields - only if not employee OR employee owns the client
+        if (!isEmployee || isOwner) {
+            if (updateData.name) client.name = updateData.name;
+            if (updateData.email) client.email = updateData.email;
+            if (updateData.phone) client.phone = updateData.phone;
+            if (updateData.companyName) client.companyName = updateData.companyName;
+            if (updateData.gstNumber) client.gstNumber = updateData.gstNumber;
+            if (updateData.category) client.category = updateData.category;
+            if (updateData.address) client.address = updateData.address;
+        }
+
+        // ✅ Always update status and clientStatus if provided
+        if (updateData.status) client.status = updateData.status;
+        if (updateData.clientStatus) client.clientStatus = updateData.clientStatus;
+        if (updateData.remarks) client.remarks = updateData.remarks;
 
         const updatedClient = await client.save();
 
@@ -159,14 +224,18 @@ exports.editClient = async (req, res) => {
 
     } catch (error) {
         console.error('Editing client error:', error);
-        return res.status(500).json({ success: false, message: error.message });
+        return res.status(500).json({ 
+            success: false, 
+            message: error.message 
+        });
     }
 }
 
+// ==================== DELETE CLIENT ====================
 exports.deleteClient = async (req, res) => {
     const { id } = req.params; 
     try {
-        const client = await Client.findByIdAndDelete(id);
+        const client = await Client.findById(id);
 
         if (!client) {
             return res.status(404).json({
@@ -174,6 +243,20 @@ exports.deleteClient = async (req, res) => {
                 message: "Client not found"
             });
         }
+
+        // ✅ Proper ObjectId comparison
+        const userId = req.user?.id?.toString();
+        const createdBy = client.createdBy?.toString();
+
+        // ✅ Agar employee hai aur client usne nahi banaya toh deny
+        if (req.user && req.user.role === 'employee' && createdBy !== userId) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. You can only delete your own clients.'
+            });
+        }
+
+        await Client.findByIdAndDelete(id);
 
         return res.status(200).json({
             success: true,
@@ -188,4 +271,4 @@ exports.deleteClient = async (req, res) => {
             error: error.message
         });
     }
-};
+}

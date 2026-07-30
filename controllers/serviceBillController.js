@@ -17,7 +17,10 @@ exports.updateServiceBill = async (req, res) => {
                 totalAmount: totalAmount,
                 paidAmount: initialPayment || 0,
                 dueAmount: totalAmount - (initialPayment || 0),
-                status: initialPayment >= totalAmount ? 'Paid' : (initialPayment > 0 ? 'Partially Paid' : 'Pending')
+                status: initialPayment >= totalAmount ? 'Paid' : (initialPayment > 0 ? 'Partially Paid' : 'Pending'),
+                // ✅ IMPORTANT: Save who created this
+                createdBy: req.user?.id || null,
+                createdByUsername: req.user?.username || 'System'
             });
         } else {
             const isNewBill = await Bill.findById(billId);
@@ -73,13 +76,19 @@ exports.updateServiceBill = async (req, res) => {
     }
 };
 
-// serviceBillController.js - getClientServiceBilling
+// ✅ UPDATED: Employee ko sirf apne service bills dikhao
 exports.getClientServiceBilling = async (req, res) => {
     try {
         const { clientId } = req.params;
-        const serviceBills = await ServiceBill.find({ clientId: clientId });
         
+        let query = { clientId: clientId };
         
+        // ✅ Agar employee hai toh sirf apne service bills dikhao
+        if (req.user && req.user.role === 'employee') {
+            query.createdBy = req.user.id;
+        }
+        
+        const serviceBills = await ServiceBill.find(query);
         
         const processedServices = serviceBills.map(service => {
             let totalPaid = 0;
@@ -107,29 +116,23 @@ exports.getClientServiceBilling = async (req, res) => {
                     status: 'Paid',
                     paymentMethod: p.paymentMethod,
                     remarks: p.remarks,
-                    // ✅ Installment me GST nahi hai
                     gstAmount: 0,
                     gstPercentage: 0,
-                    taxType: 'N/A'  // ✅ Installment ka koi GST nahi
+                    taxType: 'N/A'
                 }));
             
-            // ✅ 🔥 CRITICAL FIX: Parent bill ka taxType use karo, default mat daalo
             let taxType = service.taxType || 'CGST+SGST';
             let gstPercentage = service.gstPercentage || 0;
             let gstAmount = service.gstAmount || 0;
             
-            // ✅ Agar installment hai to GST 0 karo
             const isInstallmentService = service.bills && service.bills.length > 0 && 
                 service.bills.some(b => b.amount && b.paymentReceived && b.amount === b.paymentReceived);
             
             if (isInstallmentService) {
-                // ✅ Installment service hai - GST nahi hai
-                taxType = service.taxType || 'CGST+SGST';  // Parent tax type show karo
+                taxType = service.taxType || 'CGST+SGST';
                 gstPercentage = service.gstPercentage || 0;
-                gstAmount = 0;  // ✅ Installment me GST 0
+                gstAmount = 0;
             }
-            
-            
             
             return {
                 _id: service._id,
@@ -145,11 +148,9 @@ exports.getClientServiceBilling = async (req, res) => {
                 bills: service.bills || [],
                 installmentBills: installmentBills,
                 totalInstallments: installmentBills.length,
-                // ✅ FIXED: Parent bill ke GST values use karo
                 taxType: taxType,
                 gstPercentage: gstPercentage,
                 gstAmount: gstAmount,
-                // ✅ Extra: Parent bill ka original GST store karo
                 parentTaxType: service.taxType || 'CGST+SGST',
                 parentGstPercentage: service.gstPercentage || 0,
                 parentGstAmount: service.gstAmount || 0,
@@ -180,12 +181,11 @@ exports.getClientServiceBilling = async (req, res) => {
     }
 };
 
+// ✅ UPDATED: Permission check for add service payment
 exports.addServicePayment = async (req, res) => {
     try {
         const { serviceBillId } = req.params;
         const { amount, paymentMethod, transactionId, remarks, receivedBy, billNumber } = req.body;
-        
- 
         
         const serviceBill = await ServiceBill.findById(serviceBillId);
         
@@ -193,6 +193,14 @@ exports.addServicePayment = async (req, res) => {
             return res.status(404).json({
                 success: false,
                 message: 'Service bill not found'
+            });
+        }
+
+        // ✅ Employee check
+        if (req.user && req.user.role === 'employee' && serviceBill.createdBy?.toString() !== req.user.id) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. You can only add payments to your own service bills.'
             });
         }
         
@@ -220,8 +228,6 @@ exports.addServicePayment = async (req, res) => {
         
         await serviceBill.save();
         
-       
-        
         return res.status(200).json({
             success: true,
             data: serviceBill,
@@ -236,23 +242,34 @@ exports.addServicePayment = async (req, res) => {
     }
 };
 
+// ✅ UPDATED: Permission check for delete service bill
 exports.deleteServiceBill = async (req, res) => {
     try {
         const { id } = req.params;
         
-        const deletedServiceBill = await ServiceBill.findByIdAndDelete(id);
+        const serviceBill = await ServiceBill.findById(id);
         
-        if (!deletedServiceBill) {
+        if (!serviceBill) {
             return res.status(404).json({
                 success: false,
                 message: 'Service bill not found'
             });
         }
+
+        // ✅ Employee check
+        if (req.user && req.user.role === 'employee' && serviceBill.createdBy?.toString() !== req.user.id) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. You can only delete your own service bills.'
+            });
+        }
+        
+        await ServiceBill.findByIdAndDelete(id);
         
         return res.status(200).json({
             success: true,
             message: 'Service bill deleted successfully',
-            data: deletedServiceBill
+            data: serviceBill
         });
     } catch (error) {
         console.error('Delete service bill error:', error);
@@ -263,6 +280,7 @@ exports.deleteServiceBill = async (req, res) => {
     }
 };
 
+// ✅ UPDATED: Permission check for remove bill from service bill
 exports.removeBillFromServiceBill = async (req, res) => {
     try {
         const { id } = req.params;
@@ -274,6 +292,14 @@ exports.removeBillFromServiceBill = async (req, res) => {
             return res.status(404).json({
                 success: false,
                 message: 'Service bill not found'
+            });
+        }
+
+        // ✅ Employee check
+        if (req.user && req.user.role === 'employee' && serviceBill.createdBy?.toString() !== req.user.id) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. You can only modify your own service bills.'
             });
         }
         
