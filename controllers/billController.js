@@ -191,7 +191,7 @@ exports.createBill = async (req, res) => {
 
         if (services && Array.isArray(services) && services.length > 0 && services[0].duration) {
             newBill.duration = services[0].duration;
-            console.log("✅ Set duration from service:", newBill.duration);
+            
         }
 
         let due = parsedTotalAmount - parsedInitialPayment;
@@ -236,15 +236,12 @@ exports.createBill = async (req, res) => {
         }
 
         await newBill.save();
-        console.log("✅ Bill saved successfully:", billNumber);
+        
         await newBill.populate('clientId', 'name companyName email phone address gstNumber');
 
         // ========== ✅ SERVICE BILL CREATION - FIXED WITH targetServiceBillId ==========
         try {
-            console.log("🟢 Starting ServiceBill creation...");
-            console.log("   serviceName:", serviceName);
-            console.log("   isMultiServiceInstallment:", isMultiServiceInstallment);
-            console.log("   targetServiceBillId:", targetServiceBillId);
+          
 
             let isInstallmentForExistingMultiService = false;
             let existingMultiServiceBill = null;
@@ -542,7 +539,7 @@ exports.createBill = async (req, res) => {
             message: parsedInitialPayment > 0 ? 'Bill created with initial payment' : 'Bill created successfully',
             data: {
                 ...newBill.toObject(),
-                taxType: newBill.taxType,  // ✅ ADDED - taxType properly send karega
+                taxType: newBill.taxType,  
                 cgst: newBill.cgst,
                 sgst: newBill.sgst,
                 igst: newBill.igst
@@ -920,7 +917,7 @@ exports.editBill = async (req, res) => {
 exports.forceDeleteBill = async (req, res) => {
     try {
         const { id } = req.params;
-        console.log('Force deleting bill with payments:', id);
+
 
         const deletedBill = await Bill.findByIdAndDelete(id);
 
@@ -931,7 +928,7 @@ exports.forceDeleteBill = async (req, res) => {
             });
         }
 
-        console.log('Force deleted bill:', deletedBill.billNumber, 'with', deletedBill.payments?.length, 'payments');
+        
 
         return res.status(200).json({
             success: true,

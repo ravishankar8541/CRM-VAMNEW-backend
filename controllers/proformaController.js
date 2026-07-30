@@ -299,7 +299,7 @@ const generatePDFHTML = async (proforma) => {
 
 // ==================== CREATE PROFORMA ====================
 exports.createProforma = async (req, res) => {
-  console.log('📝 === CREATE PROFORMA REQUEST RECEIVED ===');
+  
 
   try {
     const {

@@ -1,45 +1,41 @@
 const express = require('express');
+const authMiddleware = require('../middleware/auth'); // ✅ Import from separate file
 const { 
   register, 
   login, 
   getAllUsers, 
   adminResetPassword, 
-  changeOwnPassword 
+  changeOwnPassword,
+  getCurrentUser,        // ✅ New
+  toggleUserStatus,      // ✅ New
+  deleteUser             // ✅ New
 } = require('../controllers/authController');
-
-// ✅ Auth middleware to verify token
-const authMiddleware = (req, res, next) => {
-  try {
-    const token = req.headers.authorization?.split(' ')[1];
-    
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: 'No token provided',
-      });
-    }
-
-    const jwt = require('jsonwebtoken');
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch (error) {
-    return res.status(401).json({
-      success: false,
-      message: 'Invalid or expired token',
-    });
-  }
-};
 
 const router = express.Router();
 
-// Public routes
+// ==================== PUBLIC ROUTES ====================
 router.post('/register', register);
 router.post('/login', login);
 
-// Protected routes (require authentication)
+// ==================== PROTECTED ROUTES ====================
+// All routes below require authentication
+
+// ✅ Get current user info
+router.get('/me', authMiddleware, getCurrentUser);
+
+// ✅ Get all users (Admin only)
 router.get('/users', authMiddleware, getAllUsers);
+
+// ✅ Toggle user active status (Admin only)
+router.put('/users/:userId/toggle-status', authMiddleware, toggleUserStatus);
+
+// ✅ Delete user (Admin only)
+router.delete('/users/:userId', authMiddleware, deleteUser);
+
+// ✅ Reset user password (Admin only)
 router.post('/admin/reset-password', authMiddleware, adminResetPassword);
+
+// ✅ Change own password
 router.post('/change-password', authMiddleware, changeOwnPassword);
 
 module.exports = router;

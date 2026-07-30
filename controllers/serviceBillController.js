@@ -79,7 +79,7 @@ exports.getClientServiceBilling = async (req, res) => {
         const { clientId } = req.params;
         const serviceBills = await ServiceBill.find({ clientId: clientId });
         
-        console.log(`📊 Found ${serviceBills.length} ServiceBills for client ${clientId}`);
+        
         
         const processedServices = serviceBills.map(service => {
             let totalPaid = 0;
@@ -129,8 +129,7 @@ exports.getClientServiceBilling = async (req, res) => {
                 gstAmount = 0;  // ✅ Installment me GST 0
             }
             
-            console.log(`   Service: ${displayName}, Total: ${service.totalAmount}, Paid: ${totalPaid}, Due: ${dueAmount}`);
-            console.log(`   TaxType: ${taxType}, GST%: ${gstPercentage}, GST Amount: ${gstAmount}`);
+            
             
             return {
                 _id: service._id,
@@ -186,7 +185,7 @@ exports.addServicePayment = async (req, res) => {
         const { serviceBillId } = req.params;
         const { amount, paymentMethod, transactionId, remarks, receivedBy, billNumber } = req.body;
         
-        console.log('💰 Adding payment to service bill:', { serviceBillId, amount });
+ 
         
         const serviceBill = await ServiceBill.findById(serviceBillId);
         
@@ -221,11 +220,7 @@ exports.addServicePayment = async (req, res) => {
         
         await serviceBill.save();
         
-        console.log('✅ Payment added successfully:', {
-            newPaidAmount: serviceBill.paidAmount,
-            newDueAmount: serviceBill.dueAmount,
-            status: serviceBill.status
-        });
+       
         
         return res.status(200).json({
             success: true,
