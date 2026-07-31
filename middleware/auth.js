@@ -42,8 +42,7 @@ const authMiddleware = async (req, res, next) => {
       isActive: user.isActive,
     };
     
-    // ✅ Debug log
-    console.log('✅ Auth Middleware - User attached:', req.user);
+    
     
     next();
   } catch (error) {

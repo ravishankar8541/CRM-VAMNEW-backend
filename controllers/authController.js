@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const crypto = require('crypto');
+const { sendPasswordResetEmail } = require('../services/emailService');
 
 // Register
 exports.register = async (req, res) => {
@@ -446,6 +447,179 @@ exports.deleteUser = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Server error',
+      error: error.message,
+    });
+  }
+};
+
+
+
+
+// ✅ NEW: Request Password Reset (Admin only - appears on login page)
+exports.requestPasswordReset = async (req, res) => {
+  try {
+    const { username } = req.body;
+
+    if (!username) {
+      return res.status(400).json({
+        success: false,
+        message: 'Username is required',
+      });
+    }
+
+    // ✅ Find user
+    const user = await User.findOne({ username: username.toLowerCase() });
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found with this username',
+      });
+    }
+
+    // ✅ Check if user is active
+    if (user.isActive === false) {
+      return res.status(403).json({
+        success: false,
+        message: 'Account is disabled. Please contact administrator.',
+      });
+    }
+
+    // ✅ ONLY admin users can reset via login page
+    if (user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Password reset is only available for admin accounts.',
+      });
+    }
+
+    // ✅ Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetTokenExpiry = Date.now() + 3600000; // 1 hour
+
+    // ✅ Save token to user
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordExpires = new Date(resetTokenExpiry);
+    await user.save();
+
+    // ✅ Send email with reset link
+    const emailResult = await sendPasswordResetEmail(
+      user.username, // Using username as email (or user.email if you have it)
+      resetToken,
+      user.name || user.username
+    );
+
+    if (!emailResult.success) {
+      // Log error but don't expose to user
+      console.error('Email sending failed:', emailResult.error);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send reset email. Please try again later.',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Password reset link sent to your email. Please check your inbox.',
+    });
+
+  } catch (error) {
+    console.error('Request password reset error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error while requesting password reset',
+      error: error.message,
+    });
+  }
+};
+
+// ✅ NEW: Verify Reset Token
+exports.verifyResetToken = async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reset token is required',
+      });
+    }
+
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired reset token. Please request a new password reset.',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Token is valid',
+      username: user.username,
+    });
+
+  } catch (error) {
+    console.error('Verify reset token error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error',
+    });
+  }
+};
+
+// ✅ NEW: Reset Password with Token
+exports.resetPassword = async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Token and new password are required',
+      });
+    }
+
+    if (newPassword.length < 4) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 4 characters',
+      });
+    }
+
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired reset token. Please request a new password reset.',
+      });
+    }
+
+    // ✅ Update password and clear reset fields
+    user.password = newPassword;
+    user.resetPasswordToken = null;
+    user.resetPasswordExpires = null;
+    user.lastPasswordChange = new Date();
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Password reset successfully. You can now login with your new password.',
+    });
+
+  } catch (error) {
+    console.error('Reset password error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error while resetting password',
       error: error.message,
     });
   }

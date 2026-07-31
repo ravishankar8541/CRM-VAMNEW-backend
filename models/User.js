@@ -23,15 +23,15 @@ const userSchema = new mongoose.Schema(
       enum: ['admin', 'hr', 'employee'],
       default: 'employee',
     },
-     isActive: {
+    isActive: {
       type: Boolean,
-      default: true,  // Default active
+      default: true,
     },
-    // ✅ ADD THIS - Track last login
     lastLogin: {
       type: Date,
       default: null,
     },
+    // ✅ NEW: Password Reset Fields
     resetPasswordToken: {
       type: String,
       default: null,
