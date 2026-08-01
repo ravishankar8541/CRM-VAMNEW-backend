@@ -17,9 +17,18 @@ const PORT = process.env.PORT || 5000;
 
 dbConnection();
 
+// ✅ ADDED crm.viralcrm.in to origin list
 app.use(cors({
-  origin: ['https://www.viralcrm.in', 'http://www.viralcrm.in', 'https://viralcrm.in', 'http://viralcrm.in', 'http://localhost:5174', 'http://localhost:5173',],
-  
+  origin: [
+    'https://crm.viralcrm.in',
+    'http://crm.viralcrm.in',
+    'https://www.viralcrm.in', 
+    'http://www.viralcrm.in', 
+    'https://viralcrm.in', 
+    'http://viralcrm.in', 
+    'http://localhost:5174', 
+    'http://localhost:5173'
+  ],
   credentials: true,               
 }));
 
@@ -33,9 +42,7 @@ app.use('/api/bills', billRoutes);
 app.use('/api/service-bills', serviceBillRoutes);
 app.use('/api/email', emailRoutes);
 app.use('/api/pdf', pdfRoutes);
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/api/proforma', proformaRoutes);
-
 
 app.get('/', (req, res) => {
   res.status(200).json({
@@ -48,6 +55,7 @@ app.get('/', (req, res) => {
 app.get('/uploads/debug-test', (req, res) => {
   res.send('Static middleware is active!');
 });
+
 app.listen(PORT, () => {
   console.log(`Server is running on PORT ${PORT}`);
 });
