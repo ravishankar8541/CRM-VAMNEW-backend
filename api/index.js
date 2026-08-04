@@ -16,7 +16,7 @@ const PORT = process.env.PORT || 5000;
 
 dbConnection();
 
-// ✅ CORS with methods (DELETE/EDIT के लिए जरूरी)
+// ✅ सही CORS configuration
 app.use(cors({
   origin: [
     'https://crm.viralcrm.in',
@@ -28,14 +28,13 @@ app.use(cors({
     'http://localhost:5174', 
     'http://localhost:5173'
   ],
-   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'], 
-  
-  allowedHeaders: ['Content-Type', 'Authorization'], // ✅ ये ऐड करें
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'], // ✅ OPTIONS add karo
+  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,               
 }));
 
-// ❌ इस line को हटा दें - इसी से 503 आ रहा है
-// app.options('*', cors());  // <-- इसे कमेंट करें या हटाएं
+// ✅ ये line UNCOMMENT karo (ये DELETE/EDIT के लिए जरूरी है)
+app.options('*', cors());  // ✅ IMPORTANT - इसको हटाना नहीं है
 
 app.use(express.json());
 
