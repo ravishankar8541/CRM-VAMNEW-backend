@@ -30,7 +30,8 @@ router.post('/register', authMiddleware, register);
 router.get('/me', authMiddleware, getCurrentUser);
 router.get('/users', authMiddleware, getAllUsers);
 router.put('/users/:userId/toggle-status', authMiddleware, toggleUserStatus);
-router.delete('/users/:userId', authMiddleware, deleteUser);
+
+router.post('/users/:userId/delete', authMiddleware, deleteUser);
 router.post('/admin/reset-password', authMiddleware, adminResetPassword);
 router.post('/change-password', authMiddleware, changeOwnPassword);
 
