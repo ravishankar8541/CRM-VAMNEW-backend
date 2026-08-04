@@ -4,8 +4,8 @@ const app = express();
 const path = require('path');
 const cors = require('cors');
 const dbConnection = require('../config/db'); 
-const auth = require('../routes/auth');
-const client = require('../routes/client');
+const auth = require('../routes/auth')
+const client = require('../routes/client')
 const billRoutes = require('../routes/billRoutes');
 const serviceBillRoutes = require('../routes/serviceBillRoutes');
 const emailRoutes = require('../routes/emailRoutes');
@@ -16,28 +16,25 @@ const PORT = process.env.PORT || 5000;
 
 dbConnection();
 
-// ✅ Allowed Origins List
-const allowedOrigins = [
-  'https://crm.viralcrm.in',
-  'http://crm.viralcrm.in',
-  'https://www.viralcrm.in', 
-  'http://www.viralcrm.in', 
-  'https://viralcrm.in', 
-  'http://viralcrm.in', 
-  'http://localhost:5174', 
-  'http://localhost:5173'
-];
-
-// ✅ Updated CORS Middleware (DELETE & OPTIONS Allowed)
+// ✅ CORS with methods (DELETE/EDIT के लिए जरूरी)
 app.use(cors({
-  origin: allowedOrigins,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'], // <-- Explicitly added DELETE
-  allowedHeaders: ['Content-Type', 'Authorization'],             // <-- Explicitly added headers
+  origin: [
+    'https://crm.viralcrm.in',
+    'http://crm.viralcrm.in',
+    'https://www.viralcrm.in', 
+    'http://www.viralcrm.in', 
+    'https://viralcrm.in', 
+    'http://viralcrm.in', 
+    'http://localhost:5174', 
+    'http://localhost:5173'
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'], // ✅ ये ऐड करें
+  allowedHeaders: ['Content-Type', 'Authorization'], // ✅ ये ऐड करें
   credentials: true,               
 }));
 
-// ✅ Pre-flight request support for DELETE/PUT
-app.options('*', cors());
+// ❌ इस line को हटा दें - इसी से 503 आ रहा है
+// app.options('*', cors());  // <-- इसे कमेंट करें या हटाएं
 
 app.use(express.json());
 
