@@ -1,3 +1,4 @@
+// api/index.js
 require('dotenv').config();
 const express = require('express');
 const app = express();
@@ -16,32 +17,29 @@ const PORT = process.env.PORT || 5000;
 
 dbConnection();
 
-// ✅ CORS - इस तरह करो (बिना app.options के)
-app.use(cors({
-  origin: [
-    'https://crm.viralcrm.in',
-    'http://crm.viralcrm.in',
-    'https://www.viralcrm.in', 
-    'http://www.viralcrm.in', 
-    'https://viralcrm.in', 
-    'http://viralcrm.in', 
-    'http://localhost:5174', 
-    'http://localhost:5173'
-  ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
-  credentials: true,
-  preflightContinue: false,
-  optionsSuccessStatus: 204
-}));
+// ✅ CORS - सबसे open तरीका (cPanel hosting के लिए)
+app.use((req, res, next) => {
+  // ✅ Allow all origins for cPanel
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, X-Requested-With');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Max-Age', '86400');
+  
+  // ✅ Handle preflight OPTIONS requests
+  if (req.method === 'OPTIONS') {
+    return res.status(204).send();
+  }
+  
+  next();
+});
 
-// ❌ इस line को हटाओ - यही login तोड़ रहा है
-// app.options('*', cors());  // <-- इसे हटाओ
-
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
+// Routes
 app.use('/api/auth', auth);
 app.use('/api/client', client);
 app.use('/api/bills', billRoutes);
@@ -53,13 +51,9 @@ app.use('/api/proforma', proformaRoutes);
 app.get('/', (req, res) => {
   res.status(200).json({
     status: "success",
-    message: "ViralCRM Backend is Live and Running perfectly!",
+    message: "ViralCRM Backend is Live!",
     timestamp: new Date()
   });
-});
-
-app.get('/uploads/debug-test', (req, res) => {
-  res.send('Static middleware is active!');
 });
 
 app.listen(PORT, () => {
