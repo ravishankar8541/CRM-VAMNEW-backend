@@ -28,7 +28,8 @@ app.use(cors({
     'http://localhost:5174', 
     'http://localhost:5173'
   ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'], // ✅ ये ऐड करें
+   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'], 
+  
   allowedHeaders: ['Content-Type', 'Authorization'], // ✅ ये ऐड करें
   credentials: true,               
 }));
