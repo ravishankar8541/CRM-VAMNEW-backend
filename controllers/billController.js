@@ -26,26 +26,6 @@ const generateBillNumber = async (retryCount = 0) => {
     return billNumber;
 };
 
-const calculateGST = (amount, gstRate, taxType = 'CGST+SGST') => {
-    const gstAmount = (amount * gstRate) / 100;
-
-    if (taxType === 'IGST') {
-        return {
-            gstAmount: gstAmount,
-            cgst: 0,
-            sgst: 0,
-            igst: gstAmount
-        };
-    } else {
-        return {
-            gstAmount: gstAmount,
-            cgst: gstAmount / 2,
-            sgst: gstAmount / 2,
-            igst: 0
-        };
-    }
-};
-
 exports.createBill = async (req, res) => {
     try {
         const {
@@ -117,11 +97,9 @@ exports.createBill = async (req, res) => {
             parsedTotalAmount = Math.round(parsedTotalAmount);
         } else {
             parsedTotalAmount = Math.round(parseFloat(totalAmount)) || 0;
-            parsedTotalAmount = Math.round(parsedTotalAmount);
         }
 
         const parsedInitialPayment = Math.round(parseFloat(initialPayment)) || 0;
-
         const roundedTotal = Math.round(parsedTotalAmount);
         const roundedInitial = Math.round(parsedInitialPayment);
 
@@ -160,7 +138,6 @@ exports.createBill = async (req, res) => {
             sgstAmount = calculatedGstAmount / 2;
         }
 
-        // ✅ NEW: createdBy fields - IMPORTANT
         const newBill = new Bill({
             billNumber,
             clientId,
@@ -190,7 +167,6 @@ exports.createBill = async (req, res) => {
 
         if (services && Array.isArray(services) && services.length > 0 && services[0].duration) {
             newBill.duration = services[0].duration;
-
         }
 
         let due = parsedTotalAmount - parsedInitialPayment;
@@ -235,7 +211,6 @@ exports.createBill = async (req, res) => {
         }
 
         await newBill.save();
-
         await newBill.populate('clientId', 'name companyName email phone address gstNumber');
 
         // ========== SERVICE BILL CREATION ==========
@@ -263,7 +238,7 @@ exports.createBill = async (req, res) => {
                 }
             }
 
-            // ✅ CASE 1: MULTIPLE SERVICES (New multi-service contract)
+            // Case 1: Multiple services contract
             if (services && Array.isArray(services) && services.length > 0) {
                 let totalContractValue = 0;
                 const serviceDetails = [];
@@ -324,7 +299,6 @@ exports.createBill = async (req, res) => {
                     taxType: currentTaxType,
                     gstPercentage: parseFloat(gstPercentage) || 18,
                     gstAmount: roundedGstAmount || 0,
-                    // ✅ IMPORTANT: Save who created this
                     createdBy: req.user?.id || null,
                     createdByUsername: req.user?.username || 'System'
                 });
@@ -343,11 +317,9 @@ exports.createBill = async (req, res) => {
 
                 await serviceBill.save();
             }
-
-            // ✅ CASE 2: SINGLE SERVICE
+            // Case 2: Single Service
             else if (serviceName && (!services || services.length === 0)) {
                 if (isInstallmentForExistingMultiService && existingMultiServiceBill) {
-                    // Installment for existing multi-service
                     const billAlreadyExists = existingMultiServiceBill.bills.some(b => b.billNumber === billNumber);
 
                     if (!billAlreadyExists) {
@@ -388,7 +360,6 @@ exports.createBill = async (req, res) => {
                         await existingMultiServiceBill.save();
                     }
                 } else {
-                    // Regular single service
                     let serviceBill = await ServiceBill.findOne({
                         clientId: clientId,
                         serviceName: serviceName,
@@ -415,7 +386,6 @@ exports.createBill = async (req, res) => {
                                 paymentReceived: parsedInitialPayment,
                                 date: new Date()
                             }],
-                            // ✅ IMPORTANT: Save who created this
                             createdBy: req.user?.id || null,
                             createdByUsername: req.user?.username || 'System'
                         });
@@ -423,15 +393,7 @@ exports.createBill = async (req, res) => {
                         const billAlreadyExists = serviceBill.bills.some(b => b.billNumber === billNumber);
 
                         if (!billAlreadyExists) {
-                            const isInstallmentBill = parsedInitialPayment === parsedTotalAmount &&
-                                parsedTotalAmount <= serviceBill.dueAmount;
-
-                            if (isInstallmentBill) {
-                                serviceBill.paidAmount += parsedInitialPayment;
-                            } else {
-                                serviceBill.paidAmount += parsedInitialPayment;
-                            }
-
+                            serviceBill.paidAmount += parsedInitialPayment;
                             serviceBill.dueAmount = serviceBill.totalAmount - serviceBill.paidAmount;
 
                             if (serviceBill.dueAmount < 0) serviceBill.dueAmount = 0;
@@ -495,7 +457,6 @@ exports.createBill = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Employee / Sales ko sirf apne bills dikhao
 exports.getBills = async (req, res) => {
     try {
         const {
@@ -509,7 +470,6 @@ exports.getBills = async (req, res) => {
 
         let query = {};
 
-        // ✅ Agar employee ya sales hai toh sirf apne bills dikhao
         if (req.user && (req.user.role === 'employee' || req.user.role === 'sales')) {
             query.createdById = req.user.id;
         }
@@ -552,7 +512,6 @@ exports.getBills = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Permission check for bill by ID (employee + sales)
 exports.getBillById = async (req, res) => {
     try {
         const bill = await Bill.findById(req.params.id)
@@ -565,7 +524,6 @@ exports.getBillById = async (req, res) => {
             });
         }
 
-        // ✅ Employee / Sales check: Agar employee ya sales hai aur bill usne nahi banaya toh deny
         if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && bill.createdById?.toString() !== req.user.id) {
             return res.status(403).json({
                 success: false,
@@ -593,7 +551,6 @@ exports.getBillById = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Permission check for add payment (employee + sales)
 exports.addPayment = async (req, res) => {
     try {
         const { id } = req.params;
@@ -615,7 +572,6 @@ exports.addPayment = async (req, res) => {
             });
         }
 
-        // ✅ Employee / Sales check
         if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && bill.createdById?.toString() !== req.user.id) {
             return res.status(403).json({
                 success: false,
@@ -677,7 +633,6 @@ exports.addPayment = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Permission check for update bill (employee + sales)
 exports.updateBill = async (req, res) => {
     try {
         const { id } = req.params;
@@ -692,7 +647,6 @@ exports.updateBill = async (req, res) => {
             });
         }
 
-        // ✅ Employee / Sales check
         if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && bill.createdById?.toString() !== req.user.id) {
             return res.status(403).json({
                 success: false,
@@ -746,11 +700,10 @@ exports.updateBill = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Permission check for delete bill (employee + sales)
+// ✅ SYNCED: Delete Bill also removes or updates ServiceBill
 exports.deleteBill = async (req, res) => {
     try {
         const { id } = req.params;
-
         const bill = await Bill.findById(id);
 
         if (!bill) {
@@ -760,7 +713,6 @@ exports.deleteBill = async (req, res) => {
             });
         }
 
-        // ✅ Employee / Sales check
         if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && bill.createdById?.toString() !== req.user.id) {
             return res.status(403).json({
                 success: false,
@@ -768,25 +720,33 @@ exports.deleteBill = async (req, res) => {
             });
         }
 
-        if (bill.payments && bill.payments.length > 0) {
-            return res.status(400).json({
-                success: false,
-                message: 'Cannot delete bill with existing payments'
-            });
-        }
+        // ✅ Clean up associated ServiceBill records
+        const serviceBills = await ServiceBill.find({
+            $or: [
+                { 'bills.billId': id },
+                { 'bills.billNumber': bill.billNumber }
+            ]
+        });
 
-        if (bill.status === 'Paid') {
-            return res.status(400).json({
-                success: false,
-                message: 'Cannot delete a paid bill'
-            });
+        for (const sb of serviceBills) {
+            sb.bills = sb.bills.filter(b => b.billNumber !== bill.billNumber && b.billId?.toString() !== id);
+            sb.payments = sb.payments.filter(p => p.billNumber !== bill.billNumber);
+
+            if (sb.bills.length === 0) {
+                await ServiceBill.findByIdAndDelete(sb._id);
+            } else {
+                sb.paidAmount = sb.payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+                sb.dueAmount = Math.max(0, sb.totalAmount - sb.paidAmount);
+                sb.status = sb.dueAmount === 0 ? 'Paid' : (sb.paidAmount > 0 ? 'Partially Paid' : 'Pending');
+                await sb.save();
+            }
         }
 
         await Bill.findByIdAndDelete(id);
 
         return res.status(200).json({
             success: true,
-            message: 'Bill deleted successfully'
+            message: 'Bill and related service records deleted successfully'
         });
 
     } catch (error) {
@@ -799,7 +759,48 @@ exports.deleteBill = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Permission check for client billing summary (employee + sales)
+// ✅ SYNCED: Force Delete Bill also removes ServiceBill
+exports.forceDeleteBill = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const bill = await Bill.findById(id);
+        if (!bill) {
+            return res.status(404).json({
+                success: false,
+                message: 'Bill not found'
+            });
+        }
+
+        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && bill.createdById?.toString() !== req.user.id) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied.'
+            });
+        }
+
+        await ServiceBill.deleteMany({
+            $or: [
+                { 'bills.billId': id },
+                { 'bills.billNumber': bill.billNumber }
+            ]
+        });
+
+        await Bill.findByIdAndDelete(id);
+
+        return res.status(200).json({
+            success: true,
+            message: 'Bill and all associated records deleted successfully'
+        });
+    } catch (error) {
+        console.error('Force delete error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Server error',
+            error: error.message
+        });
+    }
+};
+
 exports.getClientBillingSummary = async (req, res) => {
     try {
         const { clientId } = req.params;
@@ -813,7 +814,6 @@ exports.getClientBillingSummary = async (req, res) => {
 
         let query = { clientId: clientId };
 
-        // ✅ Agar employee ya sales hai toh sirf apne bills dikhao
         if (req.user && (req.user.role === 'employee' || req.user.role === 'sales')) {
             query.createdById = req.user.id;
         }
@@ -900,42 +900,4 @@ exports.downloadBill = async (req, res) => {
 
 exports.editBill = async (req, res) => {
     return exports.updateBill(req, res);
-};
-
-// ✅ UPDATED: Permission check for force delete (employee + sales)
-exports.forceDeleteBill = async (req, res) => {
-    try {
-        const { id } = req.params;
-
-        const bill = await Bill.findById(id);
-        if (!bill) {
-            return res.status(404).json({
-                success: false,
-                message: 'Bill not found'
-            });
-        }
-
-        // ✅ Employee / Sales check
-        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && bill.createdById?.toString() !== req.user.id) {
-            return res.status(403).json({
-                success: false,
-                message: 'Access denied. You can only delete your own bills.'
-            });
-        }
-
-        const deletedBill = await Bill.findByIdAndDelete(id);
-
-        return res.status(200).json({
-            success: true,
-            message: 'Bill and all associated payments deleted successfully',
-            data: deletedBill
-        });
-    } catch (error) {
-        console.error('Force delete error:', error);
-        return res.status(500).json({
-            success: false,
-            message: 'Server error',
-            error: error.message
-        });
-    }
 };

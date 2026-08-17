@@ -1,14 +1,13 @@
-// routes/serviceBillRoutes.js
 const express = require('express');
 const router = express.Router();
 const {
     getClientServiceBilling,
     addServicePayment,
-     deleteServiceBill,        // ✅ ADD THIS
-    removeBillFromServiceBill
+    deleteServiceBill,
+    removeBillFromServiceBill,
+    updateServiceBillById
 } = require('../controllers/serviceBillController');
 
-// Auth middleware
 const authMiddleware = (req, res, next) => {
     try {
         const token = req.headers.authorization?.split(' ')[1];
@@ -30,8 +29,8 @@ router.use(authMiddleware);
 
 router.get('/client/:clientId', getClientServiceBilling);
 router.post('/:serviceBillId/payment', addServicePayment);
+router.put('/:id', updateServiceBillById); // ✅ Active PUT route for single service updates/deletions
 router.delete('/:id', deleteServiceBill);
 router.put('/:id/remove-bill', removeBillFromServiceBill);
-
 
 module.exports = router;

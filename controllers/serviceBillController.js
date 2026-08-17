@@ -1,6 +1,58 @@
 const ServiceBill = require('../models/ServiceBill');
 const Bill = require('../models/Bill');
 
+// ✅ Multi-Service Bill me se kisi ek service ko delete ya update karne ke liye
+exports.updateServiceBillById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { services, totalAmount, paidAmount, dueAmount, serviceName } = req.body;
+
+        const serviceBill = await ServiceBill.findById(id);
+        if (!serviceBill) {
+            return res.status(404).json({
+                success: false,
+                message: 'Service bill not found'
+            });
+        }
+
+        // Employee / Sales permission check
+        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && serviceBill.createdBy?.toString() !== req.user.id) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. You can only update your own service bills.'
+            });
+        }
+
+        if (services) serviceBill.services = services;
+        if (totalAmount !== undefined) serviceBill.totalAmount = Math.round(totalAmount);
+        if (paidAmount !== undefined) serviceBill.paidAmount = Math.round(paidAmount);
+        if (dueAmount !== undefined) serviceBill.dueAmount = Math.round(dueAmount);
+        if (serviceName) serviceBill.serviceName = serviceName;
+
+        if (serviceBill.dueAmount <= 0) {
+            serviceBill.status = 'Paid';
+        } else if (serviceBill.paidAmount > 0) {
+            serviceBill.status = 'Partially Paid';
+        } else {
+            serviceBill.status = 'Pending';
+        }
+
+        await serviceBill.save();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Service bill updated successfully',
+            data: serviceBill
+        });
+    } catch (error) {
+        console.error('Update Service Bill Error:', error);
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
 exports.updateServiceBill = async (req, res) => {
     try {
         const { clientId, serviceName, totalAmount, billId, billNumber, initialPayment } = req.body;
@@ -18,7 +70,6 @@ exports.updateServiceBill = async (req, res) => {
                 paidAmount: initialPayment || 0,
                 dueAmount: totalAmount - (initialPayment || 0),
                 status: initialPayment >= totalAmount ? 'Paid' : (initialPayment > 0 ? 'Partially Paid' : 'Pending'),
-                // ✅ IMPORTANT: Save who created this
                 createdBy: req.user?.id || null,
                 createdByUsername: req.user?.username || 'System'
             });
@@ -76,14 +127,12 @@ exports.updateServiceBill = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Employee / Sales ko sirf apne service bills dikhao
+// ✅ Fetch client service bills
 exports.getClientServiceBilling = async (req, res) => {
     try {
         const { clientId } = req.params;
-        
         let query = { clientId: clientId };
         
-        // ✅ Agar employee ya sales hai toh sirf apne service bills dikhao
         if (req.user && (req.user.role === 'employee' || req.user.role === 'sales')) {
             query.createdBy = req.user.id;
         }
@@ -181,7 +230,7 @@ exports.getClientServiceBilling = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Permission check for add service payment (employee + sales)
+// ✅ Add payment to service bill
 exports.addServicePayment = async (req, res) => {
     try {
         const { serviceBillId } = req.params;
@@ -196,7 +245,6 @@ exports.addServicePayment = async (req, res) => {
             });
         }
 
-        // ✅ Employee / Sales check
         if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && serviceBill.createdBy?.toString() !== req.user.id) {
             return res.status(403).json({
                 success: false,
@@ -242,11 +290,10 @@ exports.addServicePayment = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Permission check for delete service bill (employee + sales)
+// ✅ Delete service bill AND associated Bills from DB
 exports.deleteServiceBill = async (req, res) => {
     try {
         const { id } = req.params;
-        
         const serviceBill = await ServiceBill.findById(id);
         
         if (!serviceBill) {
@@ -256,20 +303,29 @@ exports.deleteServiceBill = async (req, res) => {
             });
         }
 
-        // ✅ Employee / Sales check
         if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && serviceBill.createdBy?.toString() !== req.user.id) {
             return res.status(403).json({
                 success: false,
-                message: 'Access denied. You can only delete your own service bills.'
+                message: 'Access denied.'
             });
         }
         
+        // Delete all linked Bills in Bill collection
+        if (serviceBill.bills && serviceBill.bills.length > 0) {
+            for (const b of serviceBill.bills) {
+                if (b.billId) {
+                    await Bill.findByIdAndDelete(b.billId);
+                } else if (b.billNumber) {
+                    await Bill.findOneAndDelete({ billNumber: b.billNumber });
+                }
+            }
+        }
+
         await ServiceBill.findByIdAndDelete(id);
         
         return res.status(200).json({
             success: true,
-            message: 'Service bill deleted successfully',
-            data: serviceBill
+            message: 'Service bill and associated bills deleted successfully'
         });
     } catch (error) {
         console.error('Delete service bill error:', error);
@@ -280,14 +336,13 @@ exports.deleteServiceBill = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Permission check for remove bill from service bill (employee + sales)
+// ✅ Remove specific bill from service bill
 exports.removeBillFromServiceBill = async (req, res) => {
     try {
         const { id } = req.params;
         const { billNumber } = req.body;
         
         const serviceBill = await ServiceBill.findById(id);
-        
         if (!serviceBill) {
             return res.status(404).json({
                 success: false,
@@ -295,11 +350,10 @@ exports.removeBillFromServiceBill = async (req, res) => {
             });
         }
 
-        // ✅ Employee / Sales check
         if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && serviceBill.createdBy?.toString() !== req.user.id) {
             return res.status(403).json({
                 success: false,
-                message: 'Access denied. You can only modify your own service bills.'
+                message: 'Access denied.'
             });
         }
         
