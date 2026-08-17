@@ -495,7 +495,7 @@ exports.createBill = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Employee ko sirf apne bills dikhao
+// ✅ UPDATED: Employee / Sales ko sirf apne bills dikhao
 exports.getBills = async (req, res) => {
     try {
         const {
@@ -509,8 +509,8 @@ exports.getBills = async (req, res) => {
 
         let query = {};
 
-        // ✅ Agar employee hai toh sirf apne bills dikhao
-        if (req.user && req.user.role === 'employee') {
+        // ✅ Agar employee ya sales hai toh sirf apne bills dikhao
+        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales')) {
             query.createdById = req.user.id;
         }
 
@@ -552,7 +552,7 @@ exports.getBills = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Permission check for bill by ID
+// ✅ UPDATED: Permission check for bill by ID (employee + sales)
 exports.getBillById = async (req, res) => {
     try {
         const bill = await Bill.findById(req.params.id)
@@ -565,8 +565,8 @@ exports.getBillById = async (req, res) => {
             });
         }
 
-        // ✅ Employee check: Agar employee hai aur bill usne nahi banaya toh deny
-        if (req.user && req.user.role === 'employee' && bill.createdById?.toString() !== req.user.id) {
+        // ✅ Employee / Sales check: Agar employee ya sales hai aur bill usne nahi banaya toh deny
+        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && bill.createdById?.toString() !== req.user.id) {
             return res.status(403).json({
                 success: false,
                 message: 'Access denied. You can only view your own bills.'
@@ -593,7 +593,7 @@ exports.getBillById = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Permission check for add payment
+// ✅ UPDATED: Permission check for add payment (employee + sales)
 exports.addPayment = async (req, res) => {
     try {
         const { id } = req.params;
@@ -615,8 +615,8 @@ exports.addPayment = async (req, res) => {
             });
         }
 
-        // ✅ Employee check
-        if (req.user && req.user.role === 'employee' && bill.createdById?.toString() !== req.user.id) {
+        // ✅ Employee / Sales check
+        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && bill.createdById?.toString() !== req.user.id) {
             return res.status(403).json({
                 success: false,
                 message: 'Access denied. You can only add payments to your own bills.'
@@ -677,7 +677,7 @@ exports.addPayment = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Permission check for update bill
+// ✅ UPDATED: Permission check for update bill (employee + sales)
 exports.updateBill = async (req, res) => {
     try {
         const { id } = req.params;
@@ -692,8 +692,8 @@ exports.updateBill = async (req, res) => {
             });
         }
 
-        // ✅ Employee check
-        if (req.user && req.user.role === 'employee' && bill.createdById?.toString() !== req.user.id) {
+        // ✅ Employee / Sales check
+        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && bill.createdById?.toString() !== req.user.id) {
             return res.status(403).json({
                 success: false,
                 message: 'Access denied. You can only edit your own bills.'
@@ -746,7 +746,7 @@ exports.updateBill = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Permission check for delete bill
+// ✅ UPDATED: Permission check for delete bill (employee + sales)
 exports.deleteBill = async (req, res) => {
     try {
         const { id } = req.params;
@@ -760,8 +760,8 @@ exports.deleteBill = async (req, res) => {
             });
         }
 
-        // ✅ Employee check
-        if (req.user && req.user.role === 'employee' && bill.createdById?.toString() !== req.user.id) {
+        // ✅ Employee / Sales check
+        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && bill.createdById?.toString() !== req.user.id) {
             return res.status(403).json({
                 success: false,
                 message: 'Access denied. You can only delete your own bills.'
@@ -799,7 +799,7 @@ exports.deleteBill = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Permission check for client billing summary
+// ✅ UPDATED: Permission check for client billing summary (employee + sales)
 exports.getClientBillingSummary = async (req, res) => {
     try {
         const { clientId } = req.params;
@@ -813,8 +813,8 @@ exports.getClientBillingSummary = async (req, res) => {
 
         let query = { clientId: clientId };
 
-        // ✅ Agar employee hai toh sirf apne bills dikhao
-        if (req.user && req.user.role === 'employee') {
+        // ✅ Agar employee ya sales hai toh sirf apne bills dikhao
+        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales')) {
             query.createdById = req.user.id;
         }
 
@@ -902,7 +902,7 @@ exports.editBill = async (req, res) => {
     return exports.updateBill(req, res);
 };
 
-// ✅ UPDATED: Permission check for force delete
+// ✅ UPDATED: Permission check for force delete (employee + sales)
 exports.forceDeleteBill = async (req, res) => {
     try {
         const { id } = req.params;
@@ -915,8 +915,8 @@ exports.forceDeleteBill = async (req, res) => {
             });
         }
 
-        // ✅ Employee check
-        if (req.user && req.user.role === 'employee' && bill.createdById?.toString() !== req.user.id) {
+        // ✅ Employee / Sales check
+        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && bill.createdById?.toString() !== req.user.id) {
             return res.status(403).json({
                 success: false,
                 message: 'Access denied. You can only delete your own bills.'

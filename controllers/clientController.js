@@ -79,13 +79,13 @@ exports.addClient = async (req, res) => {
 }
 
 // ==================== GET ALL CLIENTS ====================
-// ✅ Employee ko sirf apne clients dikhao
+// ✅ Employee / Sales ko sirf apne clients dikhao
 exports.clients = async (req, res) => {
     try {
         let query = {};
         
-        // ✅ Agar employee hai toh sirf apne clients dikhao
-        if (req.user && req.user.role === 'employee') {
+        // ✅ Agar employee ya sales hai toh sirf apne clients dikhao
+        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales')) {
             query.createdBy = req.user.id;
         }
         // ✅ Admin aur HR ko sab dikhega (query empty hai)
@@ -126,10 +126,10 @@ exports.editClient = async (req, res) => {
         const userId = req.user?.id?.toString();
         const createdBy = client.createdBy?.toString();
         const isOwner = createdBy === userId;
-        const isEmployee = req.user && req.user.role === 'employee';
+        const isEmployeeOrSales = req.user && (req.user.role === 'employee' || req.user.role === 'sales');
 
-        // ✅ If employee and not owner, restrict to status-only updates
-        if (isEmployee && !isOwner) {
+        // ✅ If employee/sales and not owner, restrict to status-only updates
+        if (isEmployeeOrSales && !isOwner) {
             // ✅ Allow status updates (Follow-up, Prospect, Converted)
             const allowedFields = [
                 'status', 'clientStatus', 'remarks',
@@ -140,20 +140,20 @@ exports.editClient = async (req, res) => {
                 'convertedLeadOwner', 'convertedRemarks'
             ];
             
-            // ✅ Check if employee is trying to update personal info
+            // ✅ Check if employee/sales is trying to update personal info
             const personalFields = ['name', 'email', 'phone', 'companyName', 'gstNumber', 'category', 'address'];
             const isUpdatingPersonal = personalFields.some(field => updateData[field] !== undefined);
             
             if (isUpdatingPersonal) {
                 return res.status(403).json({
                     success: false,
-                    message: 'Access denied. Employees can only update status and follow-up information.'
+                    message: 'Access denied. Employees/Sales can only update status and follow-up information.'
                 });
             }
         }
 
-        // ✅ Update leadOwner - only if not employee OR employee owns the client
-        if (updateData.leadOwner !== undefined && !isEmployee) {
+        // ✅ Update leadOwner - only if not employee/sales OR employee/sales owns the client
+        if (updateData.leadOwner !== undefined && !isEmployeeOrSales) {
             client.leadOwner = updateData.leadOwner;
         }
 
@@ -198,8 +198,8 @@ exports.editClient = async (req, res) => {
             });
         }
 
-        // ✅ Update personal fields - only if not employee OR employee owns the client
-        if (!isEmployee || isOwner) {
+        // ✅ Update personal fields - only if not employee/sales OR employee/sales owns the client
+        if (!isEmployeeOrSales || isOwner) {
             if (updateData.name) client.name = updateData.name;
             if (updateData.email) client.email = updateData.email;
             if (updateData.phone) client.phone = updateData.phone;
@@ -248,8 +248,8 @@ exports.deleteClient = async (req, res) => {
         const userId = req.user?.id?.toString();
         const createdBy = client.createdBy?.toString();
 
-        // ✅ Agar employee hai aur client usne nahi banaya toh deny
-        if (req.user && req.user.role === 'employee' && createdBy !== userId) {
+        // ✅ Agar employee ya sales hai aur client usne nahi banaya toh deny
+        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && createdBy !== userId) {
             return res.status(403).json({
                 success: false,
                 message: 'Access denied. You can only delete your own clients.'

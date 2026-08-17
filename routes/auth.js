@@ -12,7 +12,8 @@ const {
   // ✅ NEW
   requestPasswordReset,
   verifyResetToken,
-  resetPassword
+  resetPassword,
+  getUsersForDropdown
 } = require('../controllers/authController');
 
 const router = express.Router();
@@ -34,5 +35,6 @@ router.put('/users/:userId/toggle-status', authMiddleware, toggleUserStatus);
 router.post('/users/:userId/delete', authMiddleware, deleteUser);
 router.post('/admin/reset-password', authMiddleware, adminResetPassword);
 router.post('/change-password', authMiddleware, changeOwnPassword);
+router.get('/users/dropdown', authMiddleware, getUsersForDropdown);
 
 module.exports = router;

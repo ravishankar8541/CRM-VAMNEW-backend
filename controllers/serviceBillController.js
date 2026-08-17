@@ -76,15 +76,15 @@ exports.updateServiceBill = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Employee ko sirf apne service bills dikhao
+// ✅ UPDATED: Employee / Sales ko sirf apne service bills dikhao
 exports.getClientServiceBilling = async (req, res) => {
     try {
         const { clientId } = req.params;
         
         let query = { clientId: clientId };
         
-        // ✅ Agar employee hai toh sirf apne service bills dikhao
-        if (req.user && req.user.role === 'employee') {
+        // ✅ Agar employee ya sales hai toh sirf apne service bills dikhao
+        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales')) {
             query.createdBy = req.user.id;
         }
         
@@ -181,7 +181,7 @@ exports.getClientServiceBilling = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Permission check for add service payment
+// ✅ UPDATED: Permission check for add service payment (employee + sales)
 exports.addServicePayment = async (req, res) => {
     try {
         const { serviceBillId } = req.params;
@@ -196,8 +196,8 @@ exports.addServicePayment = async (req, res) => {
             });
         }
 
-        // ✅ Employee check
-        if (req.user && req.user.role === 'employee' && serviceBill.createdBy?.toString() !== req.user.id) {
+        // ✅ Employee / Sales check
+        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && serviceBill.createdBy?.toString() !== req.user.id) {
             return res.status(403).json({
                 success: false,
                 message: 'Access denied. You can only add payments to your own service bills.'
@@ -242,7 +242,7 @@ exports.addServicePayment = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Permission check for delete service bill
+// ✅ UPDATED: Permission check for delete service bill (employee + sales)
 exports.deleteServiceBill = async (req, res) => {
     try {
         const { id } = req.params;
@@ -256,8 +256,8 @@ exports.deleteServiceBill = async (req, res) => {
             });
         }
 
-        // ✅ Employee check
-        if (req.user && req.user.role === 'employee' && serviceBill.createdBy?.toString() !== req.user.id) {
+        // ✅ Employee / Sales check
+        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && serviceBill.createdBy?.toString() !== req.user.id) {
             return res.status(403).json({
                 success: false,
                 message: 'Access denied. You can only delete your own service bills.'
@@ -280,7 +280,7 @@ exports.deleteServiceBill = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Permission check for remove bill from service bill
+// ✅ UPDATED: Permission check for remove bill from service bill (employee + sales)
 exports.removeBillFromServiceBill = async (req, res) => {
     try {
         const { id } = req.params;
@@ -295,8 +295,8 @@ exports.removeBillFromServiceBill = async (req, res) => {
             });
         }
 
-        // ✅ Employee check
-        if (req.user && req.user.role === 'employee' && serviceBill.createdBy?.toString() !== req.user.id) {
+        // ✅ Employee / Sales check
+        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && serviceBill.createdBy?.toString() !== req.user.id) {
             return res.status(403).json({
                 success: false,
                 message: 'Access denied. You can only modify your own service bills.'

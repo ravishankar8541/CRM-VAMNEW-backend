@@ -624,3 +624,25 @@ exports.resetPassword = async (req, res) => {
     });
   }
 };
+
+
+// ✅ Anyone logged in can get this list (for Lead Owner dropdown)
+exports.getUsersForDropdown = async (req, res) => {
+  try {
+    const users = await User.find(
+      { isActive: true },
+      'name username role'
+    ).sort({ name: 1 });
+
+    return res.status(200).json({
+      success: true,
+      data: users,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error',
+    });
+  }
+};
