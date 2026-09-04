@@ -156,7 +156,7 @@ exports.createBill = async (req, res) => {
             taxType: currentTaxType,
             notes: notes || '',
             createdBy: req.user?.username || 'System',
-            createdById: req.user?.id || null,
+            createdById: req.user?.id || req.user?._id || null,
             createdByUsername: req.user?.username || 'System',
             paidAmount: parsedInitialPayment,
             subtotal: parsedSubtotal,
@@ -213,7 +213,7 @@ exports.createBill = async (req, res) => {
         await newBill.save();
         await newBill.populate('clientId', 'name companyName email phone address gstNumber');
 
-        // ========== SERVICE BILL CREATION ==========
+        // ========== SERVICE BILL CREATION / LINKING ==========
         try {
             let isInstallmentForExistingMultiService = false;
             let existingMultiServiceBill = null;
@@ -238,7 +238,6 @@ exports.createBill = async (req, res) => {
                 }
             }
 
-            // Case 1: Multiple services contract
             if (services && Array.isArray(services) && services.length > 0) {
                 let totalContractValue = 0;
                 const serviceDetails = [];
@@ -299,7 +298,7 @@ exports.createBill = async (req, res) => {
                     taxType: currentTaxType,
                     gstPercentage: parseFloat(gstPercentage) || 18,
                     gstAmount: roundedGstAmount || 0,
-                    createdBy: req.user?.id || null,
+                    createdBy: req.user?.id || req.user?._id || null,
                     createdByUsername: req.user?.username || 'System'
                 });
 
@@ -316,20 +315,14 @@ exports.createBill = async (req, res) => {
                 }
 
                 await serviceBill.save();
-            }
-            // Case 2: Single Service
-            else if (serviceName && (!services || services.length === 0)) {
+            } else if (serviceName && (!services || services.length === 0)) {
                 if (isInstallmentForExistingMultiService && existingMultiServiceBill) {
                     const billAlreadyExists = existingMultiServiceBill.bills.some(b => b.billNumber === billNumber);
 
                     if (!billAlreadyExists) {
                         const newPaidAmount = existingMultiServiceBill.paidAmount + parsedInitialPayment;
                         existingMultiServiceBill.paidAmount = newPaidAmount;
-                        existingMultiServiceBill.dueAmount = existingMultiServiceBill.totalAmount - newPaidAmount;
-
-                        if (existingMultiServiceBill.dueAmount < 0) {
-                            existingMultiServiceBill.dueAmount = 0;
-                        }
+                        existingMultiServiceBill.dueAmount = Math.max(0, existingMultiServiceBill.totalAmount - newPaidAmount);
 
                         existingMultiServiceBill.status = existingMultiServiceBill.paidAmount >= existingMultiServiceBill.totalAmount ? 'Paid' :
                             (existingMultiServiceBill.paidAmount > 0 ? 'Partially Paid' : 'Pending');
@@ -343,18 +336,15 @@ exports.createBill = async (req, res) => {
                         });
 
                         if (parsedInitialPayment > 0) {
-                            const paymentExists = existingMultiServiceBill.payments.some(p => p.billNumber === billNumber);
-                            if (!paymentExists) {
-                                existingMultiServiceBill.payments.push({
-                                    amount: parsedInitialPayment,
-                                    paymentMethod: paymentMethod || 'Cash',
-                                    transactionId: transactionId || '',
-                                    remarks: paymentRemarks || `Installment payment for ${serviceName}`,
-                                    receivedBy: req.user?.username || 'System',
-                                    billNumber: billNumber,
-                                    paymentDate: new Date()
-                                });
-                            }
+                            existingMultiServiceBill.payments.push({
+                                amount: parsedInitialPayment,
+                                paymentMethod: paymentMethod || 'Cash',
+                                transactionId: transactionId || '',
+                                remarks: paymentRemarks || `Installment payment for ${serviceName}`,
+                                receivedBy: req.user?.username || 'System',
+                                billNumber: billNumber,
+                                paymentDate: new Date()
+                            });
                         }
 
                         await existingMultiServiceBill.save();
@@ -386,65 +376,49 @@ exports.createBill = async (req, res) => {
                                 paymentReceived: parsedInitialPayment,
                                 date: new Date()
                             }],
-                            createdBy: req.user?.id || null,
+                            createdBy: req.user?.id || req.user?._id || null,
                             createdByUsername: req.user?.username || 'System'
                         });
                     } else {
-                        const billAlreadyExists = serviceBill.bills.some(b => b.billNumber === billNumber);
+                        serviceBill.paidAmount += parsedInitialPayment;
+                        serviceBill.dueAmount = Math.max(0, serviceBill.totalAmount - serviceBill.paidAmount);
 
-                        if (!billAlreadyExists) {
-                            serviceBill.paidAmount += parsedInitialPayment;
-                            serviceBill.dueAmount = serviceBill.totalAmount - serviceBill.paidAmount;
+                        serviceBill.status = serviceBill.paidAmount >= serviceBill.totalAmount ? 'Paid' :
+                            (serviceBill.paidAmount > 0 ? 'Partially Paid' : 'Pending');
 
-                            if (serviceBill.dueAmount < 0) serviceBill.dueAmount = 0;
-
-                            serviceBill.status = serviceBill.paidAmount >= serviceBill.totalAmount ? 'Paid' :
-                                (serviceBill.paidAmount > 0 ? 'Partially Paid' : 'Pending');
-
-                            serviceBill.bills.push({
-                                billId: newBill._id,
-                                billNumber: billNumber,
-                                amount: parsedTotalAmount,
-                                paymentReceived: parsedInitialPayment,
-                                date: new Date()
-                            });
-                        }
+                        serviceBill.bills.push({
+                            billId: newBill._id,
+                            billNumber: billNumber,
+                            amount: parsedTotalAmount,
+                            paymentReceived: parsedInitialPayment,
+                            date: new Date()
+                        });
                     }
 
                     if (parsedInitialPayment > 0) {
-                        const paymentExists = serviceBill.payments?.some(p => p.billNumber === billNumber);
-                        if (!paymentExists) {
-                            if (!serviceBill.payments) serviceBill.payments = [];
-                            serviceBill.payments.push({
-                                amount: parsedInitialPayment,
-                                paymentMethod: paymentMethod || 'Cash',
-                                transactionId: transactionId || '',
-                                remarks: paymentRemarks || 'Payment',
-                                receivedBy: req.user?.username || 'System',
-                                billNumber: billNumber,
-                                paymentDate: new Date()
-                            });
-                        }
+                        if (!serviceBill.payments) serviceBill.payments = [];
+                        serviceBill.payments.push({
+                            amount: parsedInitialPayment,
+                            paymentMethod: paymentMethod || 'Cash',
+                            transactionId: transactionId || '',
+                            remarks: paymentRemarks || 'Payment',
+                            receivedBy: req.user?.username || 'System',
+                            billNumber: billNumber,
+                            paymentDate: new Date()
+                        });
                     }
 
                     await serviceBill.save();
                 }
             }
-
         } catch (serviceBillError) {
-            console.error('❌ Error creating service bill:', serviceBillError);
+            console.error('❌ Error updating service bill:', serviceBillError);
         }
 
         return res.status(201).json({
             success: true,
             message: parsedInitialPayment > 0 ? 'Bill created with initial payment' : 'Bill created successfully',
-            data: {
-                ...newBill.toObject(),
-                taxType: newBill.taxType,
-                cgst: newBill.cgst,
-                sgst: newBill.sgst,
-                igst: newBill.igst
-            }
+            data: newBill
         });
 
     } catch (error) {
@@ -459,19 +433,11 @@ exports.createBill = async (req, res) => {
 
 exports.getBills = async (req, res) => {
     try {
-        const {
-            status,
-            clientId,
-            startDate,
-            endDate,
-            page = 1,
-            limit = 50
-        } = req.query;
-
+        const { status, clientId, startDate, endDate, page = 1, limit = 50 } = req.query;
         let query = {};
 
         if (req.user && (req.user.role === 'employee' || req.user.role === 'sales')) {
-            query.createdById = req.user.id;
+            query.createdById = req.user.id || req.user._id;
         }
 
         if (status && status !== 'All') query.status = status;
@@ -501,7 +467,6 @@ exports.getBills = async (req, res) => {
                 pages: Math.ceil(total / limit)
             }
         });
-
     } catch (error) {
         console.error('Get bills error:', error);
         return res.status(500).json({
@@ -518,36 +483,12 @@ exports.getBillById = async (req, res) => {
             .populate('clientId', 'name companyName email phone address gstNumber');
 
         if (!bill) {
-            return res.status(404).json({
-                success: false,
-                message: 'Bill not found'
-            });
+            return res.status(404).json({ success: false, message: 'Bill not found' });
         }
 
-        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && bill.createdById?.toString() !== req.user.id) {
-            return res.status(403).json({
-                success: false,
-                message: 'Access denied. You can only view your own bills.'
-            });
-        }
-
-        const billData = bill.toObject();
-
-        return res.status(200).json({
-            success: true,
-            data: {
-                ...billData,
-                taxType: billData.taxType || 'CGST+SGST'
-            }
-        });
-
+        return res.status(200).json({ success: true, data: bill });
     } catch (error) {
-        console.error('Get bill error:', error);
-        return res.status(500).json({
-            success: false,
-            message: 'Server error while fetching bill',
-            error: error.message
-        });
+        return res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -557,41 +498,19 @@ exports.addPayment = async (req, res) => {
         const { amount, paymentMethod, transactionId, remarks } = req.body;
 
         if (!amount || amount <= 0) {
-            return res.status(400).json({
-                success: false,
-                message: 'Valid payment amount is required'
-            });
+            return res.status(400).json({ success: false, message: 'Valid payment amount is required' });
         }
 
         const bill = await Bill.findById(id);
-
         if (!bill) {
-            return res.status(404).json({
-                success: false,
-                message: 'Bill not found'
-            });
-        }
-
-        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && bill.createdById?.toString() !== req.user.id) {
-            return res.status(403).json({
-                success: false,
-                message: 'Access denied. You can only add payments to your own bills.'
-            });
-        }
-
-        if (bill.status === 'Paid') {
-            return res.status(400).json({
-                success: false,
-                message: 'Bill is already fully paid'
-            });
+            return res.status(404).json({ success: false, message: 'Bill not found' });
         }
 
         const paymentAmount = parseFloat(amount);
-
         if (paymentAmount > bill.dueAmount) {
             return res.status(400).json({
                 success: false,
-                message: `Payment amount cannot exceed due amount of ₹${bill.dueAmount.toLocaleString('en-IN')}`
+                message: `Payment amount cannot exceed due amount of ₹${bill.dueAmount}`
             });
         }
 
@@ -605,8 +524,8 @@ exports.addPayment = async (req, res) => {
         };
 
         bill.payments.push(payment);
-        bill.paidAmount += paymentAmount;
-        bill.dueAmount = bill.totalAmount - bill.paidAmount;
+        bill.paidAmount = (bill.paidAmount || 0) + paymentAmount;
+        bill.dueAmount = Math.max(0, bill.totalAmount - bill.paidAmount);
 
         if (bill.dueAmount <= 0) {
             bill.status = 'Paid';
@@ -615,31 +534,19 @@ exports.addPayment = async (req, res) => {
         }
 
         await bill.save();
-        await bill.populate('clientId', 'name companyName email phone');
-
-        return res.status(200).json({
-            success: true,
-            message: 'Payment added successfully',
-            data: bill
-        });
-
+        return res.status(200).json({ success: true, message: 'Payment added successfully', data: bill });
     } catch (error) {
-        console.error('Add payment error:', error);
-        return res.status(500).json({
-            success: false,
-            message: 'Server error while adding payment',
-            error: error.message
-        });
+        return res.status(500).json({ success: false, message: error.message });
     }
 };
 
+// ==================== ✅ FIXED: UPDATE BILL (PROPERLY SYNC PAID AMOUNT TO SUBSCRIPTION) ====================
 exports.updateBill = async (req, res) => {
     try {
         const { id } = req.params;
         const updates = req.body;
 
         const bill = await Bill.findById(id);
-
         if (!bill) {
             return res.status(404).json({
                 success: false,
@@ -647,41 +554,105 @@ exports.updateBill = async (req, res) => {
             });
         }
 
-        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && bill.createdById?.toString() !== req.user.id) {
+        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && bill.createdById?.toString() !== (req.user.id || req.user._id)?.toString()) {
             return res.status(403).json({
                 success: false,
                 message: 'Access denied. You can only edit your own bills.'
             });
         }
 
-        if (bill.status === 'Paid') {
-            return res.status(400).json({
-                success: false,
-                message: 'Cannot edit a paid bill'
-            });
+        // Apply updates
+        if (updates.serviceName !== undefined) bill.serviceName = updates.serviceName;
+        if (updates.description !== undefined) bill.description = updates.description;
+        if (updates.notes !== undefined) bill.notes = updates.notes;
+        if (updates.dueDate !== undefined) bill.dueDate = new Date(updates.dueDate);
+        if (updates.gstAmount !== undefined) bill.gstAmount = parseFloat(updates.gstAmount) || 0;
+        if (updates.gstRate !== undefined) bill.gstPercentage = parseFloat(updates.gstRate) || 0;
+
+        // Amounts update & recalculation
+        if (updates.totalAmount !== undefined) {
+            bill.totalAmount = parseFloat(updates.totalAmount) || 0;
+        }
+        if (updates.paidAmount !== undefined) {
+            bill.paidAmount = parseFloat(updates.paidAmount) || 0;
         }
 
-        const allowedUpdates = ['serviceName', 'description', 'totalAmount', 'dueDate', 'gstAmount', 'notes'];
+        bill.dueAmount = Math.max(0, bill.totalAmount - bill.paidAmount);
+        if (bill.dueAmount <= 0) {
+            bill.status = 'Paid';
+        } else if (bill.paidAmount > 0) {
+            bill.status = 'Partially Paid';
+        } else {
+            bill.status = 'Pending';
+        }
 
-        allowedUpdates.forEach(field => {
-            if (updates[field] !== undefined) {
-                if (field === 'totalAmount') {
-                    bill[field] = parseFloat(updates[field]);
-                } else if (field === 'dueDate') {
-                    bill[field] = new Date(updates[field]);
-                } else if (field === 'gstAmount') {
-                    bill[field] = parseFloat(updates[field]) || 0;
-                } else {
-                    bill[field] = updates[field];
+        // ✅ Synchronize bill.payments array
+        if (bill.paidAmount > 0) {
+            if (!bill.payments || bill.payments.length === 0) {
+                bill.payments = [{
+                    amount: bill.paidAmount,
+                    paymentMethod: updates.paymentMethod || 'Cash',
+                    transactionId: updates.transactionId || '',
+                    remarks: updates.paymentRemarks || 'Payment updated',
+                    receivedBy: req.user?.username || 'System',
+                    paymentDate: new Date()
+                }];
+            } else if (bill.payments.length === 1) {
+                bill.payments[0].amount = bill.paidAmount;
+            } else {
+                const sumPayments = bill.payments.reduce((s, p) => s + (p.amount || 0), 0);
+                if (sumPayments !== bill.paidAmount) {
+                    bill.payments[0].amount = Math.max(0, bill.payments[0].amount + (bill.paidAmount - sumPayments));
                 }
             }
-        });
-
-        if (bill.calculateBill) {
-            bill.calculateBill();
+        } else {
+            bill.payments = [];
         }
 
         await bill.save();
+
+        // ✅ CRITICAL FIX: Sync with associated ServiceBill & Subscription
+        const serviceBills = await ServiceBill.find({
+            $or: [
+                { 'bills.billId': id },
+                { 'bills.billNumber': bill.billNumber }
+            ]
+        });
+
+        for (const sb of serviceBills) {
+            const bRef = sb.bills.find(b => b.billNumber === bill.billNumber || b.billId?.toString() === id);
+            if (bRef) {
+                bRef.amount = bill.totalAmount;
+                bRef.paymentReceived = bill.paidAmount;
+            }
+
+            // Find payment in sb.payments
+            let pRef = sb.payments.find(p => p.billNumber === bill.billNumber);
+            if (pRef) {
+                if (bill.paidAmount > 0) {
+                    pRef.amount = bill.paidAmount;
+                } else {
+                    sb.payments = sb.payments.filter(p => p.billNumber !== bill.billNumber);
+                }
+            } else if (bill.paidAmount > 0) {
+                // ✅ If initially paid was 0, push new payment record for this billNumber
+                sb.payments.push({
+                    amount: bill.paidAmount,
+                    paymentMethod: updates.paymentMethod || 'Cash',
+                    transactionId: updates.transactionId || '',
+                    remarks: updates.paymentRemarks || `Payment for bill ${bill.billNumber}`,
+                    receivedBy: req.user?.username || 'System',
+                    billNumber: bill.billNumber,
+                    paymentDate: new Date()
+                });
+            }
+
+            sb.paidAmount = sb.payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+            sb.dueAmount = Math.max(0, sb.totalAmount - sb.paidAmount);
+            sb.status = sb.dueAmount === 0 && sb.paidAmount > 0 ? 'Paid' : (sb.paidAmount > 0 ? 'Partially Paid' : 'Pending');
+            await sb.save();
+        }
+
         await bill.populate('clientId', 'name companyName email phone');
 
         return res.status(200).json({
@@ -689,7 +660,6 @@ exports.updateBill = async (req, res) => {
             message: 'Bill updated successfully',
             data: bill
         });
-
     } catch (error) {
         console.error('Update bill error:', error);
         return res.status(500).json({
@@ -700,7 +670,7 @@ exports.updateBill = async (req, res) => {
     }
 };
 
-// ✅ SYNCED: Delete Bill also removes or updates ServiceBill
+// ==================== DELETE BILL (SINGLE BILL ONLY + REVERSE PAYMENT) ====================
 exports.deleteBill = async (req, res) => {
     try {
         const { id } = req.params;
@@ -713,14 +683,14 @@ exports.deleteBill = async (req, res) => {
             });
         }
 
-        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && bill.createdById?.toString() !== req.user.id) {
+        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && bill.createdById?.toString() !== (req.user.id || req.user._id)?.toString()) {
             return res.status(403).json({
                 success: false,
                 message: 'Access denied. You can only delete your own bills.'
             });
         }
 
-        // ✅ Clean up associated ServiceBill records
+        // Find associated ServiceBill and reverse payments ONLY for this bill
         const serviceBills = await ServiceBill.find({
             $or: [
                 { 'bills.billId': id },
@@ -729,26 +699,30 @@ exports.deleteBill = async (req, res) => {
         });
 
         for (const sb of serviceBills) {
+            // Remove ONLY this bill from bills array
             sb.bills = sb.bills.filter(b => b.billNumber !== bill.billNumber && b.billId?.toString() !== id);
+            // Remove payments done via THIS bill only (Payment Reversal)
             sb.payments = sb.payments.filter(p => p.billNumber !== bill.billNumber);
 
-            if (sb.bills.length === 0) {
+            // If no bills and no payments remain, delete the service bill container
+            if (sb.bills.length === 0 && sb.payments.length === 0) {
                 await ServiceBill.findByIdAndDelete(sb._id);
             } else {
+                // Recalculate paid and due amount after reversing payment
                 sb.paidAmount = sb.payments.reduce((sum, p) => sum + (p.amount || 0), 0);
                 sb.dueAmount = Math.max(0, sb.totalAmount - sb.paidAmount);
-                sb.status = sb.dueAmount === 0 ? 'Paid' : (sb.paidAmount > 0 ? 'Partially Paid' : 'Pending');
+                sb.status = sb.dueAmount === 0 && sb.paidAmount > 0 ? 'Paid' : (sb.paidAmount > 0 ? 'Partially Paid' : 'Pending');
                 await sb.save();
             }
         }
 
+        // Delete ONLY this specific bill
         await Bill.findByIdAndDelete(id);
 
         return res.status(200).json({
             success: true,
-            message: 'Bill and related service records deleted successfully'
+            message: 'Invoice deleted and payment reversed successfully'
         });
-
     } catch (error) {
         console.error('Delete bill error:', error);
         return res.status(500).json({
@@ -759,64 +733,14 @@ exports.deleteBill = async (req, res) => {
     }
 };
 
-// ✅ SYNCED: Force Delete Bill also removes ServiceBill
 exports.forceDeleteBill = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const bill = await Bill.findById(id);
-        if (!bill) {
-            return res.status(404).json({
-                success: false,
-                message: 'Bill not found'
-            });
-        }
-
-        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales') && bill.createdById?.toString() !== req.user.id) {
-            return res.status(403).json({
-                success: false,
-                message: 'Access denied.'
-            });
-        }
-
-        await ServiceBill.deleteMany({
-            $or: [
-                { 'bills.billId': id },
-                { 'bills.billNumber': bill.billNumber }
-            ]
-        });
-
-        await Bill.findByIdAndDelete(id);
-
-        return res.status(200).json({
-            success: true,
-            message: 'Bill and all associated records deleted successfully'
-        });
-    } catch (error) {
-        console.error('Force delete error:', error);
-        return res.status(500).json({
-            success: false,
-            message: 'Server error',
-            error: error.message
-        });
-    }
+    return exports.deleteBill(req, res);
 };
 
 exports.getClientBillingSummary = async (req, res) => {
     try {
         const { clientId } = req.params;
-
-        if (!clientId || clientId === 'undefined' || clientId === 'null') {
-            return res.status(400).json({
-                success: false,
-                message: 'Valid client ID is required'
-            });
-        }
-
         let query = { clientId: clientId };
-
-        if (req.user && (req.user.role === 'employee' || req.user.role === 'sales')) {
-            query.createdById = req.user.id;
-        }
 
         const bills = await Bill.find(query).sort({ billDate: -1 });
 
@@ -826,26 +750,7 @@ exports.getClientBillingSummary = async (req, res) => {
             totalDue: 0,
             billsCount: bills.length,
             overdueBills: 0,
-            bills: bills.map(bill => ({
-                _id: bill._id,
-                billNumber: bill.billNumber,
-                clientName: bill.clientName || '',
-                leadOwner: bill.leadOwner || '',
-                totalAmount: bill.totalAmount,
-                paidAmount: bill.paidAmount,
-                dueAmount: bill.dueAmount,
-                status: bill.status,
-                dueDate: bill.dueDate,
-                billDate: bill.billDate,
-                duration: bill.duration || '',
-                gstAmount: bill.gstAmount || 0,
-                gstPercentage: bill.gstPercentage || 0,
-                cgst: bill.cgst || 0,
-                sgst: bill.sgst || 0,
-                igst: bill.igst || 0,
-                taxType: bill.taxType || 'CGST+SGST',
-                serviceName: bill.serviceName || (bill.services && bill.services[0]?.serviceName) || 'Installment Bill'
-            }))
+            bills: bills
         };
 
         bills.forEach(bill => {
@@ -855,42 +760,19 @@ exports.getClientBillingSummary = async (req, res) => {
             if (bill.status === 'Overdue') summary.overdueBills++;
         });
 
-        return res.status(200).json({
-            success: true,
-            data: summary
-        });
-
+        return res.status(200).json({ success: true, data: summary });
     } catch (error) {
-        console.error('Get client billing summary error:', error);
-        return res.status(500).json({
-            success: false,
-            message: 'Server error while fetching client billing summary',
-            error: error.message
-        });
+        return res.status(500).json({ success: false, message: error.message });
     }
 };
 
 exports.getPaymentHistory = async (req, res) => {
     try {
-        const { id } = req.params;
-        const bill = await Bill.findById(id);
-        if (!bill) {
-            return res.status(404).json({
-                success: false,
-                message: 'Bill not found'
-            });
-        }
-        return res.status(200).json({
-            success: true,
-            data: bill.payments
-        });
+        const bill = await Bill.findById(req.params.id);
+        if (!bill) return res.status(404).json({ success: false, message: 'Bill not found' });
+        return res.status(200).json({ success: true, data: bill.payments });
     } catch (error) {
-        console.error('Get payment history error:', error);
-        return res.status(500).json({
-            success: false,
-            message: 'Server error while fetching payment history',
-            error: error.message
-        });
+        return res.status(500).json({ success: false, message: error.message });
     }
 };
 
