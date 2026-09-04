@@ -47,7 +47,12 @@ exports.createBill = async (req, res) => {
             paymentRemarks,
             services,
             isMultiServiceInstallment,
-            targetServiceBillId
+            targetServiceBillId,
+            isInstallmentPayment,
+            parentServiceName,
+            parentGSTPercentage,
+            parentGSTAmount,
+            parentIsGST
         } = req.body;
 
         if (!clientId) {
@@ -138,6 +143,42 @@ exports.createBill = async (req, res) => {
             sgstAmount = calculatedGstAmount / 2;
         }
 
+        // ==================== IDENTIFY INSTALLMENT & PARENT GST ====================
+        const isInstallment = Boolean(
+            isMultiServiceInstallment === true ||
+            isInstallmentPayment === true ||
+            req.body.isInstallment === true ||
+            targetServiceBillId
+        );
+
+        let finalParentIsGST = false;
+        let finalParentGSTPercentage = 0;
+
+        if (isInstallment) {
+            if (targetServiceBillId) {
+                const targetSb = await ServiceBill.findById(targetServiceBillId);
+                if (targetSb) {
+                    const sbGstAmt = parseFloat(targetSb.gstAmount) || 0;
+                    const sbGstPct = parseFloat(targetSb.gstPercentage) || 0;
+                    const sbHasSvcGst = targetSb.services && targetSb.services.some(s => (parseFloat(s.gstRate) || 0) > 0 || (parseFloat(s.gstAmount) || 0) > 0);
+                    if (sbGstAmt > 0 || sbGstPct > 0 || sbHasSvcGst || targetSb.isGST === true) {
+                        finalParentIsGST = true;
+                        finalParentGSTPercentage = sbGstPct || (parseFloat(parentGSTPercentage) || 0);
+                    }
+                }
+            }
+            if (!finalParentIsGST && parentIsGST !== undefined) {
+                finalParentIsGST = Boolean(parentIsGST);
+                finalParentGSTPercentage = parseFloat(parentGSTPercentage) || 0;
+            } else if (!finalParentIsGST && ((parseFloat(parentGSTPercentage) || 0) > 0 || (parseFloat(parentGSTAmount) || 0) > 0)) {
+                finalParentIsGST = true;
+                finalParentGSTPercentage = parseFloat(parentGSTPercentage) || 0;
+            }
+        }
+
+        const directHasGST = roundedGstAmount > 0 || (parseFloat(gstPercentage) || 0) > 0 || (services && services.some(s => (parseFloat(s.gstRate) || 0) > 0));
+        const finalIsGST = isInstallment ? finalParentIsGST : directHasGST;
+
         const newBill = new Bill({
             billNumber,
             clientId,
@@ -148,21 +189,29 @@ exports.createBill = async (req, res) => {
             duration: duration || '',
             totalAmount: parsedTotalAmount,
             dueDate: new Date(dueDate),
-            gstAmount: roundedGstAmount,
-            gstPercentage: parseFloat(gstPercentage) || 0,
-            cgst: cgstAmount,
-            sgst: sgstAmount,
-            igst: igstAmount,
-            taxType: currentTaxType,
+            gstAmount: isInstallment ? 0 : roundedGstAmount,
+            gstPercentage: isInstallment ? (finalParentIsGST ? finalParentGSTPercentage : 0) : (parseFloat(gstPercentage) || 0),
+            cgst: isInstallment ? 0 : cgstAmount,
+            sgst: isInstallment ? 0 : sgstAmount,
+            igst: isInstallment ? 0 : igstAmount,
+            taxType: isInstallment ? (finalParentIsGST ? currentTaxType : 'None') : currentTaxType,
             notes: notes || '',
             createdBy: req.user?.username || 'System',
             createdById: req.user?.id || req.user?._id || null,
             createdByUsername: req.user?.username || 'System',
             paidAmount: parsedInitialPayment,
             subtotal: parsedSubtotal,
-            totalGstAmount: roundedGstAmount,
+            totalGstAmount: isInstallment ? 0 : roundedGstAmount,
             discount: parseFloat(req.body.discount) || 0,
-            discountType: req.body.discountType || 'percentage'
+            discountType: req.body.discountType || 'percentage',
+            // ✅ Explicit tracking fields
+            isInstallment: isInstallment,
+            isGST: finalIsGST,
+            parentIsGST: finalParentIsGST,
+            parentServiceName: parentServiceName || '',
+            parentGSTPercentage: finalParentGSTPercentage,
+            targetServiceBillId: targetServiceBillId || null,
+            status: isInstallment ? 'Installment' : 'Pending'
         });
 
         if (services && Array.isArray(services) && services.length > 0 && services[0].duration) {
@@ -178,7 +227,7 @@ exports.createBill = async (req, res) => {
                 amount: parsedInitialPayment,
                 paymentMethod: paymentMethod || 'Cash',
                 transactionId: transactionId || '',
-                remarks: paymentRemarks || 'Initial payment at bill creation',
+                remarks: paymentRemarks || (isInstallment ? 'Installment payment' : 'Initial payment at bill creation'),
                 receivedBy: req.user?.username || 'System',
                 paymentDate: new Date()
             });
@@ -276,6 +325,7 @@ exports.createBill = async (req, res) => {
                 }
 
                 const contractName = serviceDetails.map(s => s.serviceName).join(' + ');
+                const isContractGST = (roundedGstAmount || 0) > 0 || (parsedTotalGst || 0) > 0 || (parseFloat(gstPercentage) || 0) > 0;
 
                 const serviceBill = new ServiceBill({
                     clientId: clientId,
@@ -296,8 +346,10 @@ exports.createBill = async (req, res) => {
                         date: new Date()
                     }],
                     taxType: currentTaxType,
-                    gstPercentage: parseFloat(gstPercentage) || 18,
+                    // ✅ FIXED: Do not force 18 when gstPercentage is 0
+                    gstPercentage: (gstPercentage !== undefined && gstPercentage !== null && !isNaN(parseFloat(gstPercentage))) ? parseFloat(gstPercentage) : (isContractGST ? 18 : 0),
                     gstAmount: roundedGstAmount || 0,
+                    isGST: isContractGST,
                     createdBy: req.user?.id || req.user?._id || null,
                     createdByUsername: req.user?.username || 'System'
                 });
@@ -359,6 +411,7 @@ exports.createBill = async (req, res) => {
                     const serviceTotal = parsedTotalAmount;
 
                     if (!serviceBill) {
+                        const singleHasGST = (roundedGstAmount || 0) > 0 || (parseFloat(gstPercentage) || 0) > 0;
                         serviceBill = new ServiceBill({
                             clientId: clientId,
                             serviceName: serviceName,
@@ -376,6 +429,10 @@ exports.createBill = async (req, res) => {
                                 paymentReceived: parsedInitialPayment,
                                 date: new Date()
                             }],
+                            taxType: currentTaxType,
+                            gstPercentage: (gstPercentage !== undefined && gstPercentage !== null && !isNaN(parseFloat(gstPercentage))) ? parseFloat(gstPercentage) : (singleHasGST ? 18 : 0),
+                            gstAmount: roundedGstAmount || 0,
+                            isGST: singleHasGST,
                             createdBy: req.user?.id || req.user?._id || null,
                             createdByUsername: req.user?.username || 'System'
                         });
@@ -430,7 +487,6 @@ exports.createBill = async (req, res) => {
         });
     }
 };
-
 exports.getBills = async (req, res) => {
     try {
         const { status, clientId, startDate, endDate, page = 1, limit = 50 } = req.query;

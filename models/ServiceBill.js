@@ -1,3 +1,6 @@
+
+
+
 const mongoose = require('mongoose');
 
 const serviceBillSchema = new mongoose.Schema({
@@ -45,18 +48,22 @@ const serviceBillSchema = new mongoose.Schema({
     },
     taxType: {
         type: String,
-        enum: ['CGST+SGST', 'IGST'],
+        enum: ['CGST+SGST', 'IGST', 'None'],
         default: 'CGST+SGST'
     },
     gstPercentage: {
         type: Number,
-        default: 18,
+        default: 0,
         min: 0,
         max: 100
     },
     gstAmount: {
         type: Number,
         default: 0
+    },
+    isGST: {
+        type: Boolean,
+        default: false
     },
     status: {
         type: String,
@@ -79,7 +86,6 @@ const serviceBillSchema = new mongoose.Schema({
         paymentReceived: { type: Number },
         date: { type: Date, default: Date.now }
     }],
-    // ✅ Employee data tracking - IMPORTANT
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',

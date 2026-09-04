@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 
+// Payment Sub-Schema
 const paymentSchema = new mongoose.Schema({
     amount: {
         type: Number,
@@ -17,7 +18,8 @@ const paymentSchema = new mongoose.Schema({
     },
     transactionId: {
         type: String,
-        trim: true
+        trim: true,
+        default: ''
     },
     remarks: {
         type: String,
@@ -172,8 +174,12 @@ const billSchema = new mongoose.Schema({
     },
     taxType: {
         type: String,
-        enum: ['CGST+SGST', 'IGST'],
+        enum: ['CGST+SGST', 'IGST', 'None'],
         default: 'CGST+SGST'
+    },
+    roundOff: {
+        type: Number,
+        default: 0
     },
     billDate: {
         type: Date,
@@ -185,7 +191,7 @@ const billSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['Draft', 'Pending', 'Partially Paid', 'Paid', 'Overdue', 'Cancelled'],
+        enum: ['Draft', 'Pending', 'Partially Paid', 'Paid', 'Overdue', 'Cancelled', 'Installment'],
         default: 'Pending'
     },
     payments: [paymentSchema],
@@ -206,7 +212,53 @@ const billSchema = new mongoose.Schema({
         enum: ['Monthly', 'Quarterly', 'Half-Yearly', 'Yearly'],
         default: null
     },
-    // ✅ Employee data tracking - IMPORTANT
+
+    // ==================== GST & INSTALLMENT SEPARATION TRACKING ====================
+    // ✅ Yeh bill installment (child invoice) hai ya direct bill?
+    isInstallment: {
+        type: Boolean,
+        default: false
+    },
+    // ✅ Is bill ko GST category me aana chahiye ya Non-GST me?
+    isGST: {
+        type: Boolean,
+        default: false
+    },
+    // ✅ Child invoice ke parent contract/deal me GST tha ya nahi?
+    parentIsGST: {
+        type: Boolean,
+        default: false
+    },
+    // ✅ Parent bill ki details (agar direct bill se link ho)
+    parentBillId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Bill',
+        default: null
+    },
+    parentBillNumber: {
+        type: String,
+        default: ''
+    },
+    parentServiceName: {
+        type: String,
+        default: ''
+    },
+    parentGSTPercentage: {
+        type: Number,
+        default: 0
+    },
+    parentGSTAmount: {
+        type: Number,
+        default: 0
+    },
+    // ✅ ServiceBill container ka reference
+    targetServiceBillId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'ServiceBill',
+        default: null
+    },
+
+    // Employee tracking
     createdById: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
@@ -220,12 +272,14 @@ const billSchema = new mongoose.Schema({
 
 // Method to calculate due amount and status
 billSchema.methods.calculateBill = function() {
-    this.dueAmount = this.totalAmount - this.paidAmount;
+    this.dueAmount = Math.max(0, this.totalAmount - this.paidAmount);
 
     const now = new Date();
     const dueDate = new Date(this.dueDate);
 
-    if (this.dueAmount <= 0) {
+    if (this.isInstallment) {
+        this.status = 'Installment';
+    } else if (this.dueAmount <= 0) {
         this.status = 'Paid';
     } else if (this.paidAmount > 0 && this.dueAmount > 0) {
         this.status = 'Partially Paid';
