@@ -1,3 +1,4 @@
+
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
@@ -27,11 +28,24 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    // ✅ Custom Target fields set by Admin
+    targetTotal: {
+      type: Number,
+      default: 250000,
+    },
+    targetCore: {
+      type: Number,
+      default: 175000,
+    },
+    targetGoogleAds: {
+      type: Number,
+      default: 75000,
+    },
     lastLogin: {
       type: Date,
       default: null,
     },
-    // ✅ NEW: Password Reset Fields
+    // Password Reset Fields
     resetPasswordToken: {
       type: String,
       default: null,
@@ -48,13 +62,13 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// ✅ Correct password hashing
+// Correct password hashing
 userSchema.pre('save', async function () {
   if (!this.isModified('password')) return;
   this.password = await bcrypt.hash(this.password, 12);
 });
 
-// ✅ Compare password
+// Compare password
 userSchema.methods.comparePassword = async function (candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
 };

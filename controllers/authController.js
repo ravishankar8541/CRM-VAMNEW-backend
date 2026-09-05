@@ -1,3 +1,5 @@
+
+
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const crypto = require('crypto');
@@ -6,7 +8,7 @@ const { sendPasswordResetEmail } = require('../services/emailService');
 // Register
 exports.register = async (req, res) => {
   try {
-    const { name, username, password, role } = req.body;
+    const { name, username, password, role, targetTotal, targetCore, targetGoogleAds } = req.body;
 
     if (!name || !username || !password || !role) {
       return res.status(400).json({
@@ -24,12 +26,19 @@ exports.register = async (req, res) => {
       });
     }
 
+    const total = targetTotal !== undefined ? (parseFloat(targetTotal) || 0) : 250000;
+    const core = targetCore !== undefined ? (parseFloat(targetCore) || 0) : Math.round(total * 0.7);
+    const googleAds = targetGoogleAds !== undefined ? (parseFloat(targetGoogleAds) || 0) : Math.round(total * 0.3);
+
     const user = await User.create({
       name,
       username,
       password,
       role: role || 'employee',
       isActive: true,
+      targetTotal: total,
+      targetCore: core,
+      targetGoogleAds: googleAds,
     });
 
     return res.status(201).json({
@@ -41,6 +50,9 @@ exports.register = async (req, res) => {
         username: user.username,
         role: user.role,
         isActive: user.isActive,
+        targetTotal: user.targetTotal,
+        targetCore: user.targetCore,
+        targetGoogleAds: user.targetGoogleAds,
       },
     });
 
@@ -54,10 +66,10 @@ exports.register = async (req, res) => {
   }
 };
 
-// ✅ LOGIN - FIXED with role validation
+// LOGIN with role validation
 exports.login = async (req, res) => {
   try {
-    const { username, password, role } = req.body; // ✅ Added role
+    const { username, password, role } = req.body;
 
     if (!username || !password) {
       return res.status(400).json({
@@ -66,10 +78,8 @@ exports.login = async (req, res) => {
       });
     }
 
-    // ✅ Find user with password
     const user = await User.findOne({ username }).select('+password');
 
-    // ✅ Check if user exists
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -77,7 +87,6 @@ exports.login = async (req, res) => {
       });
     }
 
-    // ✅ CRITICAL: Check if user is active
     if (user.isActive === false) {
       return res.status(403).json({
         success: false,
@@ -85,7 +94,6 @@ exports.login = async (req, res) => {
       });
     }
 
-    // ✅ CRITICAL: Role validation - Check if role matches
     if (role && user.role !== role) {
       return res.status(403).json({
         success: false,
@@ -93,7 +101,6 @@ exports.login = async (req, res) => {
       });
     }
 
-    // ✅ Verify password
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
       return res.status(401).json({
@@ -102,7 +109,6 @@ exports.login = async (req, res) => {
       });
     }
 
-    // ✅ Generate token
     const token = jwt.sign(
       { 
         id: user._id, 
@@ -115,7 +121,6 @@ exports.login = async (req, res) => {
       { expiresIn: '1d' }
     );
 
-    // ✅ Update last login
     user.lastLogin = new Date();
     await user.save();
 
@@ -129,6 +134,9 @@ exports.login = async (req, res) => {
         username: user.username,
         role: user.role,
         isActive: user.isActive,
+        targetTotal: user.targetTotal,
+        targetCore: user.targetCore,
+        targetGoogleAds: user.targetGoogleAds,
       },
     });
   } catch (error) {
@@ -141,7 +149,7 @@ exports.login = async (req, res) => {
   }
 };
 
-// ✅ GET CURRENT USER
+// GET CURRENT USER
 exports.getCurrentUser = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('-password');
@@ -168,6 +176,9 @@ exports.getCurrentUser = async (req, res) => {
         username: user.username,
         role: user.role,
         isActive: user.isActive,
+        targetTotal: user.targetTotal,
+        targetCore: user.targetCore,
+        targetGoogleAds: user.targetGoogleAds,
         lastLogin: user.lastLogin,
         createdAt: user.createdAt,
       },
@@ -182,7 +193,7 @@ exports.getCurrentUser = async (req, res) => {
   }
 };
 
-// ✅ GET ALL USERS (Admin only)
+// GET ALL USERS (Admin only)
 exports.getAllUsers = async (req, res) => {
   try {
     if (req.user.role !== 'admin') {
@@ -208,7 +219,69 @@ exports.getAllUsers = async (req, res) => {
   }
 };
 
-// ✅ TOGGLE USER STATUS (Admin only)
+
+exports.updateUserTarget = async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Admin only.',
+      });
+    }
+
+    const { userId } = req.params;
+    const { targetTotal, targetCore, targetGoogleAds } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // ✅ Target sirf Sales team ke liye allow karein
+    if (user.role !== 'sales') {
+      return res.status(400).json({
+        success: false,
+        message: 'Target can only be assigned to users with Sales role.',
+      });
+    }
+
+    const total = targetTotal !== undefined ? Math.max(0, parseFloat(targetTotal) || 0) : (user.targetTotal || 250000);
+    const core = targetCore !== undefined ? Math.max(0, parseFloat(targetCore) || 0) : Math.round(total * 0.7);
+    const googleAds = targetGoogleAds !== undefined ? Math.max(0, parseFloat(targetGoogleAds) || 0) : Math.round(total * 0.3);
+
+    user.targetTotal = total;
+    user.targetCore = core;
+    user.targetGoogleAds = googleAds;
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `Target updated successfully for ${user.name}`,
+      data: {
+        _id: user._id,
+        name: user.name,
+        username: user.username,
+        role: user.role,
+        targetTotal: user.targetTotal,
+        targetCore: user.targetCore,
+        targetGoogleAds: user.targetGoogleAds,
+      },
+    });
+  } catch (error) {
+    console.error('Update user target error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error while updating target',
+      error: error.message,
+    });
+  }
+};
+
+// TOGGLE USER STATUS (Admin only)
 exports.toggleUserStatus = async (req, res) => {
   try {
     if (req.user.role !== 'admin') {
@@ -277,7 +350,7 @@ exports.toggleUserStatus = async (req, res) => {
   }
 };
 
-// ✅ RESET PASSWORD (Admin only)
+// RESET PASSWORD (Admin only)
 exports.adminResetPassword = async (req, res) => {
   try {
     if (req.user.role !== 'admin') {
@@ -337,7 +410,7 @@ exports.adminResetPassword = async (req, res) => {
   }
 };
 
-// ✅ CHANGE OWN PASSWORD
+// CHANGE OWN PASSWORD
 exports.changeOwnPassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -399,7 +472,7 @@ exports.changeOwnPassword = async (req, res) => {
   }
 };
 
-// ✅ DELETE USER (Admin only)
+// DELETE USER (Admin only)
 exports.deleteUser = async (req, res) => {
   try {
     if (req.user.role !== 'admin') {
@@ -452,10 +525,7 @@ exports.deleteUser = async (req, res) => {
   }
 };
 
-
-
-
-// ✅ NEW: Request Password Reset (Admin only - appears on login page)
+// Request Password Reset
 exports.requestPasswordReset = async (req, res) => {
   try {
     const { username } = req.body;
@@ -467,7 +537,6 @@ exports.requestPasswordReset = async (req, res) => {
       });
     }
 
-    // ✅ Find user
     const user = await User.findOne({ username: username.toLowerCase() });
     
     if (!user) {
@@ -477,7 +546,6 @@ exports.requestPasswordReset = async (req, res) => {
       });
     }
 
-    // ✅ Check if user is active
     if (user.isActive === false) {
       return res.status(403).json({
         success: false,
@@ -485,7 +553,6 @@ exports.requestPasswordReset = async (req, res) => {
       });
     }
 
-    // ✅ ONLY admin users can reset via login page
     if (user.role !== 'admin') {
       return res.status(403).json({
         success: false,
@@ -493,24 +560,20 @@ exports.requestPasswordReset = async (req, res) => {
       });
     }
 
-    // ✅ Generate reset token
     const resetToken = crypto.randomBytes(32).toString('hex');
-    const resetTokenExpiry = Date.now() + 3600000; // 1 hour
+    const resetTokenExpiry = Date.now() + 3600000;
 
-    // ✅ Save token to user
     user.resetPasswordToken = resetToken;
     user.resetPasswordExpires = new Date(resetTokenExpiry);
     await user.save();
 
-    // ✅ Send email with reset link
     const emailResult = await sendPasswordResetEmail(
-      user.username, // Using username as email (or user.email if you have it)
+      user.username,
       resetToken,
       user.name || user.username
     );
 
     if (!emailResult.success) {
-      // Log error but don't expose to user
       console.error('Email sending failed:', emailResult.error);
       return res.status(500).json({
         success: false,
@@ -533,7 +596,7 @@ exports.requestPasswordReset = async (req, res) => {
   }
 };
 
-// ✅ NEW: Verify Reset Token
+// Verify Reset Token
 exports.verifyResetToken = async (req, res) => {
   try {
     const { token } = req.params;
@@ -572,7 +635,7 @@ exports.verifyResetToken = async (req, res) => {
   }
 };
 
-// ✅ NEW: Reset Password with Token
+// Reset Password with Token
 exports.resetPassword = async (req, res) => {
   try {
     const { token, newPassword } = req.body;
@@ -603,7 +666,6 @@ exports.resetPassword = async (req, res) => {
       });
     }
 
-    // ✅ Update password and clear reset fields
     user.password = newPassword;
     user.resetPasswordToken = null;
     user.resetPasswordExpires = null;
@@ -625,13 +687,12 @@ exports.resetPassword = async (req, res) => {
   }
 };
 
-
-// ✅ Anyone logged in can get this list (for Lead Owner dropdown)
+// Dropdown list
 exports.getUsersForDropdown = async (req, res) => {
   try {
     const users = await User.find(
       { isActive: true },
-      'name username role'
+      'name username role targetTotal targetCore targetGoogleAds'
     ).sort({ name: 1 });
 
     return res.status(200).json({

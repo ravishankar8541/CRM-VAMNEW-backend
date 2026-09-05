@@ -1,3 +1,6 @@
+
+
+
 const express = require('express');
 const authMiddleware = require('../middleware/auth');
 const { 
@@ -5,23 +8,21 @@ const {
   login, 
   getAllUsers, 
   adminResetPassword, 
-  changeOwnPassword,
+  changeOwnPassword, 
   getCurrentUser,        
   toggleUserStatus,      
   deleteUser,
-  // ✅ NEW
   requestPasswordReset,
   verifyResetToken,
   resetPassword,
-  getUsersForDropdown
+  getUsersForDropdown,
+  updateUserTarget // ✅ Added
 } = require('../controllers/authController');
 
 const router = express.Router();
 
 // ==================== PUBLIC ROUTES ====================
 router.post('/login', login);
-
-// ✅ NEW: Password Reset Routes (Public)
 router.post('/request-reset', requestPasswordReset);
 router.get('/verify-reset/:token', verifyResetToken);
 router.post('/reset-password', resetPassword);
@@ -31,7 +32,7 @@ router.post('/register', authMiddleware, register);
 router.get('/me', authMiddleware, getCurrentUser);
 router.get('/users', authMiddleware, getAllUsers);
 router.put('/users/:userId/toggle-status', authMiddleware, toggleUserStatus);
-
+router.put('/users/:userId/target', authMiddleware, updateUserTarget); // ✅ Added Target route
 router.post('/users/:userId/delete', authMiddleware, deleteUser);
 router.post('/admin/reset-password', authMiddleware, adminResetPassword);
 router.post('/change-password', authMiddleware, changeOwnPassword);
