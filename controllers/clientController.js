@@ -1,4 +1,4 @@
-const Client = require('../models/Client')
+const Client = require('../models/Client');
 
 // ==================== ADD CLIENT ====================
 exports.addClient = async (req, res) => {
@@ -7,6 +7,7 @@ exports.addClient = async (req, res) => {
             name, 
             email, 
             phone, 
+            alternatePhone,
             companyName, 
             gstNumber, 
             category, 
@@ -36,17 +37,14 @@ exports.addClient = async (req, res) => {
             });
         }
 
-        // 3. ✅ Debug: Log user info
-        console.log('🔍 User from token:', req.user);
-        console.log('🔍 User ID:', req.user?.id);
-        console.log('🔍 User Role:', req.user?.role);
-        console.log('🔍 User Username:', req.user?.username);
+       
 
         // 4. ✅ createdBy save karo - Properly handle req.user
         const newClient = new Client({
             name,
             email: email.toLowerCase(),
             phone,
+            alternatePhone: alternatePhone || '',
             companyName,
             gstNumber,
             category,
@@ -76,7 +74,7 @@ exports.addClient = async (req, res) => {
             error: error.message,
         });
     }
-}
+};
 
 // ==================== GET ALL CLIENTS ====================
 // ✅ Employee / Sales ko sirf apne clients dikhao
@@ -106,7 +104,7 @@ exports.clients = async (req, res) => {
             error: error.message,
         });
     }
-}
+};
 
 // ==================== EDIT CLIENT ====================
 exports.editClient = async (req, res) => {
@@ -141,7 +139,7 @@ exports.editClient = async (req, res) => {
             ];
             
             // ✅ Check if employee/sales is trying to update personal info
-            const personalFields = ['name', 'email', 'phone', 'companyName', 'gstNumber', 'category', 'address'];
+            const personalFields = ['name', 'email', 'phone', 'alternatePhone', 'companyName', 'gstNumber', 'category', 'address'];
             const isUpdatingPersonal = personalFields.some(field => updateData[field] !== undefined);
             
             if (isUpdatingPersonal) {
@@ -203,6 +201,7 @@ exports.editClient = async (req, res) => {
             if (updateData.name) client.name = updateData.name;
             if (updateData.email) client.email = updateData.email;
             if (updateData.phone) client.phone = updateData.phone;
+            if (updateData.alternatePhone !== undefined) client.alternatePhone = updateData.alternatePhone;
             if (updateData.companyName) client.companyName = updateData.companyName;
             if (updateData.gstNumber) client.gstNumber = updateData.gstNumber;
             if (updateData.category) client.category = updateData.category;
@@ -229,7 +228,7 @@ exports.editClient = async (req, res) => {
             message: error.message 
         });
     }
-}
+};
 
 // ==================== DELETE CLIENT ====================
 exports.deleteClient = async (req, res) => {
@@ -271,4 +270,4 @@ exports.deleteClient = async (req, res) => {
             error: error.message
         });
     }
-}
+};

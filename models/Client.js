@@ -17,6 +17,11 @@ const clientSchema = new mongoose.Schema({
         required: true,
         trim: true
     },
+    alternatePhone: {
+        type: String,
+        trim: true,
+        default: ''
+    },
     companyName: {
         type: String,
         required: true,
