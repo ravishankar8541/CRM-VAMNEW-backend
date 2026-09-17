@@ -56,6 +56,6 @@ app.get('/uploads/debug-test', (req, res) => {
   res.send('Static middleware is active!');
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on PORT ${PORT}`);
 });
